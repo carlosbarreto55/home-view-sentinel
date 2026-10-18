@@ -35,7 +35,7 @@ Findings from each spike subtask are written to `docs/spike-notes.md` in the sam
 - [x] 5.2 `InferenceBackend` interface, a fake backend with scripted detections, and the CoreML backend for the model chosen in 2.4 (class filter car/truck/bus → car, motorcycle, person; minimum confidence); `make setup` exports the model and records its version in `models/README.md` — commit: `feat(detector): add inference backends`
 - [x] 5.3 Rider association (person box lower half over a motorcycle box, ≥30% of the person's area; "with rider" by majority of the last 10 frames); tests for the spec's scenarios — commit: `feat(detector): attach riders to motorcycles`
 - [x] 5.4 Tracking (supervision ByteTrack per camera, 3 s lost buffer) and zones (normalized polygons, bottom-center anchor); tests for zone geometry and for keeping an identifier through a 2 s gap — commit: `feat(detector): track vehicles and place them in zones`
-- [ ] 5.5 `make zone-preview CAMERA=<id>`: grab a frame from the gateway, draw zones and current detections, save `docs/zone-preview-<id>.png` — commit: `feat(tools): preview camera zones on a live frame`
+- [x] 5.5 `make zone-preview CAMERA=<id>`: grab a frame from the gateway, draw zones and current detections, save `docs/zone-preview-<id>.png` — commit: `feat(tools): preview camera zones on a live frame`
 
 ## 6. Dwell alerts
 

@@ -4,7 +4,7 @@
 UV    := uv
 MODEL ?= yolo11n
 
-.PHONY: setup secrets test lint record replay
+.PHONY: setup secrets test lint record replay zone-preview
 
 # Installs the dependencies and exports the detection model to CoreML. The
 # export needs PyTorch, which is removed again afterwards (the final sync).
@@ -26,6 +26,11 @@ record:
 # clip would produce; nothing is published.
 replay:
 	$(UV) run python -m sentinel.detector.replay replay --clip $(CLIP) --camera $(CAMERA)
+
+# make zone-preview CAMERA=garagem: save docs/zone-preview-garagem.png with the
+# zones and the current detections drawn on a live frame.
+zone-preview:
+	$(UV) run python -m sentinel.detector.zone_preview --camera $(CAMERA)
 
 test:
 	$(UV) run pytest -q
