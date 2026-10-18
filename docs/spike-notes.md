@@ -121,3 +121,35 @@ HomeView's 8 substreams at the same time.**
   not caused by Sentinel. It may be worth a look in HomeView later.
 - The Mac stayed light: each FFmpeg reader decoding the main stream in software
   used about 7% CPU; load average about 2.
+
+## 2.3 FFmpeg with VideoToolbox
+
+Date: 2026-10-18, at night (about 19:30 local). FFmpeg 9.0.2 (Homebrew),
+channel 1's main stream through go2rtc, the detector's exact command
+(`frames.ffmpeg_command`: `-hwaccel videotoolbox`, `fps=5,scale=1280:720`,
+`bgr24` raw pipe). Measured with `scripts/spike-decode.py` (60 s per run).
+
+Result: **VideoToolbox decodes the main stream at 5 fps for about 9% of one
+core, and 1280x720 gives the right 16:9 picture.**
+
+| Decoder | First frame | Frames in 60 s | FFmpeg CPU (avg / max) | FFmpeg memory |
+| --- | --- | --- | --- | --- |
+| VideoToolbox | 3.8 s | 283 (5.04 fps) | 8.6% / 11.7% | 97 MB |
+| Software | 3.6 s | 284 (5.03 fps) | 13.8% / 19.7% | 84 MB |
+
+- VideoToolbox is really used: FFmpeg's verbose log says "Selecting decoder
+  'hevc' because of requested hwaccel method videotoolbox", with no fallback
+  message and 0 decode errors.
+- Software decoding would also be affordable for one camera; VideoToolbox saves
+  about a third of the CPU, which matters with more cameras.
+- Time to first frame: about 3.7 s when go2rtc has to open its DVR session,
+  about 2 s when go2rtc is already connected. The keyframe interval is 2 s, so
+  a new reader waits up to 2 s for one.
+- The main stream is HEVC Main, 960x1080, 30 fps, about 1.6 Mbit/s, and
+  signals no sample aspect ratio. At 960x1080 the picture is squeezed
+  horizontally (round wheels look tall); scaled to 1280x720 the proportions are
+  right. So it is a half-width ("1080N") 16:9 picture, and the detector's
+  `scale=1280:720` is correct. Zones are normalized, so they are drawn on the
+  1280x720 frame.
+- The DVR's on-screen clock was about 25 minutes ahead of the Mac (20:01 shown
+  at about 19:36 local). Sentinel uses the Mac's clock everywhere.
