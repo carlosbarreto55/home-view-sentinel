@@ -8,6 +8,8 @@ dependencies = [
     "numpy>=2.5.4",
     "paho-mqtt>=2.1.0",
     "pyyaml>=6.0.3",
+    "supervision>=0.31.0",
+    "trackers>=2.6.1",
 ]
 
 [dependency-groups]

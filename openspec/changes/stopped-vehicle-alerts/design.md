@@ -97,7 +97,7 @@ The exported model file is not committed; `make setup` exports it once and recor
 A `person` whose box's bottom half overlaps a `motorcycle` box by at least 30% of the person box's area is attached to that motorcycle as its rider, in the same frame. The tracked motorcycle is "with rider" when a rider was attached in at least half of its last 10 frames. Persons attached to a motorcycle are not tracked on their own. Pure function, unit tested.
 
 ### 8. Tracking and zones
-`supervision`'s ByteTrack assigns track IDs across frames (one tracker per camera, `lost_track_buffer` of 3 s at the sampling rate). Zones are polygons in normalized coordinates (0–1) of the 16:9 frame, written in `sentinel.yaml`:
+ByteTrack assigns track IDs across frames (one tracker per camera, a lost-track buffer of 3 s, driven by the frames' timestamps). It comes from Roboflow's `trackers` package, which works on `supervision` detections: supervision deprecated its own ByteTrack in 0.28 and removed it in 0.31. Zones are polygons in normalized coordinates (0–1) of the 16:9 frame, written in `sentinel.yaml`:
 
 ```yaml
 cameras:
