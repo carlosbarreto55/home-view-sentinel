@@ -182,3 +182,15 @@ def test_next_delay():
     for _ in range(8):
         delays.append(frames.next_delay(delays[-1]))
     assert delays == [5, 10, 20, 40, 80, 160, 300, 300, 300]
+
+
+def test_ffmpeg_missing_is_retried_like_a_failure():
+    def missing(command):
+        raise FileNotFoundError(2, "No such file or directory", "ffmpeg")
+
+    reader, _, states = make_reader(missing)
+    stop = FakeStop(waits=2)
+    reader.run(stop)
+    assert stop.delays == [5, 10]
+    assert states[0][0] == "reconnecting"
+    assert "could not start ffmpeg" in states[0][1]

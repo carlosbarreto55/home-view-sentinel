@@ -151,7 +151,10 @@ class FrameReader:
 
     def _read_once(self, stop: threading.Event) -> tuple[bool, str]:
         """Run FFmpeg until it fails; returns (whether any frame arrived, why it stopped)."""
-        process = self.spawn(self.command)
+        try:
+            process = self.spawn(self.command)
+        except OSError as error:
+            return False, f"could not start ffmpeg: {error}"
         got_frames = False
         buffer = bytearray()
         selector = selectors.DefaultSelector()
