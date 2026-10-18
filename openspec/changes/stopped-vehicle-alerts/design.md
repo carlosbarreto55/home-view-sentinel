@@ -140,7 +140,7 @@ Event (`contracts/event.v1.schema.json`):
 ```json
 {
   "schema": "sentinel.event/v1",
-  "event_id": "uuid",
+  "event_id": "5f0c1c0e-8a43-4d43-9a7e-2f1b6c3d9e10",
   "type": "dwell.started",
   "occurred_at": "2026-10-18T15:04:37Z",
   "camera": {"id": "garagem", "name": "Garagem", "channel": 1},
@@ -150,7 +150,22 @@ Event (`contracts/event.v1.schema.json`):
   "snapshot": {"file": "garagem/2026-10-18T15-04-37Z-garagem-42.jpg", "width": 1280, "height": 720}
 }
 ```
-`dwell.ended` carries the same fields, with `dwell.seconds` as the total and the start's `event_id` in `started_event_id`. The detector validates every event against the schema before publishing (tests too). Times are the Mac's clock in UTC; consumers format them in local time. The snapshot is referenced by file name relative to the snapshots folder, never embedded.
+`dwell.ended` carries the same fields, with `dwell.seconds` as the total and the start's `event_id` in `started_event_id`:
+```json
+{
+  "schema": "sentinel.event/v1",
+  "event_id": "b2d7e5a4-3c1f-4e8b-9d6a-7f0e1c2b3a49",
+  "type": "dwell.ended",
+  "occurred_at": "2026-10-18T15:11:07Z",
+  "camera": {"id": "garagem", "name": "Garagem", "channel": 1},
+  "zone": {"id": "calcada", "name": "Calçada"},
+  "object": {"class": "motorcycle", "with_rider": true, "track_id": "garagem-42", "confidence": 0.81},
+  "dwell": {"since": "2026-10-18T15:04:07Z", "seconds": 420},
+  "snapshot": {"file": "garagem/2026-10-18T15-04-37Z-garagem-42.jpg", "width": 1280, "height": 720},
+  "started_event_id": "5f0c1c0e-8a43-4d43-9a7e-2f1b6c3d9e10"
+}
+```
+The detector validates every event against the schema before publishing (tests too). Times are the Mac's clock in UTC; consumers format them in local time. The snapshot is referenced by file name relative to the snapshots folder, never embedded.
 
 Consumers use persistent sessions (`clean_session=false`, fixed client id), so a notifier restart does not lose events published meanwhile.
 
