@@ -1,0 +1,68 @@
+# HomeView Sentinel configuration.
+#
+# Copy this file to config/sentinel.yaml (git-ignored) and edit it there.
+# Secrets never go in this file: `make secrets` stores the DVR user and
+# password and the broker and ntfy credentials in the macOS Keychain.
+
+dvr:
+  host: 192.0.2.10
+  port: 554
+
+# Frames per second passed to detection, per camera.
+sampling:
+  fps: 5
+
+model:
+  # Ultralytics model exported to CoreML by `make setup` (yolo11n or yolo11s).
+  name: yolo11n
+  # Detections below this confidence are ignored.
+  min_confidence: 0.4
+
+dwell:
+  # Seconds a vehicle must stay stopped in a zone before an alert.
+  thresholds:
+    motorcycle: 30
+    car: 120
+  # A vehicle is still when its box center moved less than this fraction of
+  # the frame diagonal over the window.
+  still_window_seconds: 5
+  still_max_movement: 0.02
+  # Movement or a missing detection shorter than this keeps the stopped time.
+  movement_grace_seconds: 3
+  # An alerted vehicle ends after leaving the zone or being lost this long.
+  end_grace_seconds: 10
+  # No second alert for the same class in the same zone for this long,
+  # unless the first vehicle has ended.
+  cooldown_seconds: 600
+  # A new still track this close (fraction of the diagonal) to an alerted
+  # one lost less than reid_max_age_seconds ago is the same vehicle.
+  reid_max_distance: 0.05
+  reid_max_age_seconds: 120
+
+snapshots:
+  retention_days: 14
+
+notifications:
+  ntfy_topic: sentinel
+  timezone: Etc/GMT+4
+  # Send "Saiu após …" when an alerted vehicle leaves (useful while calibrating).
+  send_ended: false
+  # Alerts still go out during quiet hours, at low priority (no sound).
+  # Remove or set to null to turn quiet hours off.
+  quiet_hours:
+    start: "23:00"
+    end: "06:00"
+
+cameras:
+  - id: garagem
+    name: Garagem
+    channel: 1
+    stream: main          # main or sub
+    # Optional per-camera override of dwell.thresholds.
+    # thresholds:
+    #   car: 90
+    zones:
+      # Polygon points are (x, y) fractions of the 16:9 frame, from the top left.
+      - id: calcada
+        name: Calçada
+        polygon: [[0.05, 0.62], [0.95, 0.58], [0.98, 0.95], [0.02, 0.97]]

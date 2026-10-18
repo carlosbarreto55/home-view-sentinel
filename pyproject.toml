@@ -3,7 +3,9 @@ name = "sentinel"
 version = "0.1.0"
 description = "HomeView Sentinel: alerts on the iPhone when a vehicle stays stopped in front of the house"
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = [
+    "pyyaml>=6.0.3",
+]
 
 [dependency-groups]
 dev = [
@@ -29,3 +31,5 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+# Long lines are left to the formatter.
+ignore = ["E501"]
