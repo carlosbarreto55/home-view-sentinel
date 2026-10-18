@@ -54,8 +54,15 @@ def decode_command(clip: Path, fps: float, width: int = WIDTH, height: int = HEI
     ]
 
 
-def record_command(camera_id: str, minutes: float, output: Path, started: datetime) -> list[str]:
-    """Copy the camera's stream from the gateway (no re-encoding) into an MP4."""
+def record_command(
+    camera_id: str, minutes: float, output: Path, started: datetime, codec: str | None = None
+) -> list[str]:
+    """Copy the camera's stream from the gateway (no re-encoding) into an MP4.
+
+    ``codec`` is the stream's codec (``stream_codec``): HEVC streams are tagged
+    ``hvc1`` so QuickTime plays them. The substreams are H.264 and keep their tag.
+    """
+    tag = ["-tag:v", "hvc1"] if codec == "hevc" else []
     return [
         "ffmpeg",
         "-hide_banner",
@@ -69,12 +76,38 @@ def record_command(camera_id: str, minutes: float, output: Path, started: dateti
         f"{minutes * 60:g}",
         "-c",
         "copy",
-        "-tag:v",
-        "hvc1",  # lets QuickTime play the H.265 main streams
+        *tag,
         "-metadata",
         f"creation_time={started.astimezone(UTC).strftime('%Y-%m-%dT%H:%M:%S.000000Z')}",
         str(output),
     ]
+
+
+def stream_codec(url: str) -> str | None:
+    """The video codec of a stream (``hevc``, ``h264``), or None if it cannot be read."""
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-rtsp_transport",
+                "tcp",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=codec_name",
+                "-of",
+                "csv=p=0",
+                url,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return result.stdout.strip() or None
 
 
 def clip_start(clip: Path) -> datetime:
@@ -203,7 +236,9 @@ def main(argv: list[str] | None = None) -> int:
         CLIPS_DIR.mkdir(exist_ok=True)
         output = CLIPS_DIR / f"{camera.id}-{started.astimezone().strftime('%Y%m%d-%H%M')}.mp4"
         print(f"recording {args.minutes:g} min of {camera.name} to {output}")
-        return subprocess.run(record_command(camera.id, args.minutes, output, started)).returncode
+        codec = stream_codec(local_url(camera.id))
+        command = record_command(camera.id, args.minutes, output, started, codec)
+        return subprocess.run(command).returncode
 
     if not args.clip.is_file():
         print(f"{args.clip} not found", file=sys.stderr)

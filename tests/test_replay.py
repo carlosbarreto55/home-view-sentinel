@@ -84,3 +84,11 @@ def test_record_command_copies_the_gateway_stream():
     assert command[command.index("-t") + 1] == "600"
     assert command[command.index("-c") + 1] == "copy"
     assert "creation_time=2026-10-18T23:30:00.000000Z" in command
+
+
+def test_record_command_tags_only_hevc_for_quicktime():
+    started = datetime(2026, 10, 18, 23, 30, tzinfo=UTC)
+    hevc = record_command("garagem", 10, Path("clips/a.mp4"), started, codec="hevc")
+    assert hevc[hevc.index("-tag:v") + 1] == "hvc1"
+    for codec in ("h264", None):
+        assert "-tag:v" not in record_command("garagem", 10, Path("a.mp4"), started, codec)
