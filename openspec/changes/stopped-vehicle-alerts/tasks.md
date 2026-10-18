@@ -39,7 +39,7 @@ Findings from each spike subtask are written to `docs/spike-notes.md` in the sam
 
 ## 6. Dwell alerts
 
-- [ ] 6.1 Dwell state machine (moving, stopped, alerted, ended) with injected clock: stillness window, movement grace, per-class thresholds with per-camera overrides, end grace; a test for every scenario of the dwell-alerts spec — commit: `feat(dwell): add dwell state machine`
+- [x] 6.1 Dwell state machine (moving, stopped, alerted, ended) with injected clock: stillness window, movement grace, per-class thresholds with per-camera overrides, end grace; a test for every scenario of the dwell-alerts spec — commit: `feat(dwell): add dwell state machine`
 - [ ] 6.2 Cooldown per camera, zone and class, and re-identification of a still track near a recently lost alerted one; tests for the night-headlights and one-leaves-another-arrives scenarios — commit: `feat(dwell): avoid duplicate alerts for the same vehicle`
 - [ ] 6.3 Snapshot writer (JPEG with the box and the zone, path `<camera>/<UTC time>-<track>.jpg`) and daily deletion of snapshots older than the retention; tests for naming and retention — commit: `feat(dwell): save event snapshots`
 - [ ] 6.4 Detector pipeline and entry point: config, readers, backend, association, tracking, zones, dwell, snapshots and event publishing for every camera, with the detector's status and Last Will — commit: `feat(detector): run the detection pipeline for all cameras`
