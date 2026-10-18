@@ -3,10 +3,15 @@
 
 UV := uv
 
-.PHONY: setup test lint
+.PHONY: setup secrets test lint
 
 setup:
 	$(UV) sync
+
+# Asks for the DVR user and password and generates the broker and ntfy
+# credentials; everything is stored in the login Keychain.
+secrets:
+	$(UV) run python -m sentinel.secrets setup
 
 test:
 	$(UV) run pytest -q
