@@ -5,6 +5,7 @@ description = "HomeView Sentinel: alerts on the iPhone when a vehicle stays stop
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "jsonschema>=4.26.0",
+    "paho-mqtt>=2.1.0",
     "pyyaml>=6.0.3",
 ]
 

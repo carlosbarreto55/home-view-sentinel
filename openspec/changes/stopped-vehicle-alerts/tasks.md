@@ -27,7 +27,7 @@ Findings from each spike subtask are written to `docs/spike-notes.md` in the sam
 
 - [ ] 4.1 Mosquitto container (`containers/mosquitto/`): loopback-only listener, persistence in Application Support, password file rendered at start from the Keychain, anonymous refused — commit: `feat(bus): add authenticated Mosquitto broker container`
 - [x] 4.2 Event contract: `contracts/event.v1.schema.json` for `dwell.started` and `dwell.ended`, Python models that serialize to it, and tests that every example in design.md validates and that invalid events are rejected — commit: `feat(bus): define versioned event contract`
-- [ ] 4.3 MQTT client wrapper (paho-mqtt): authenticated connect with retry, retained status with Last Will, QoS 1 publish that validates against the contract, persistent-session subscriptions; integration test against the broker container, skipped when it is not running — commit: `feat(bus): add MQTT client with status and last will`
+- [x] 4.3 MQTT client wrapper (paho-mqtt): authenticated connect with retry, retained status with Last Will, QoS 1 publish that validates against the contract, persistent-session subscriptions; integration test against the broker container, skipped when it is not running — commit: `feat(bus): add MQTT client with status and last will`
 
 ## 5. Detection
 
