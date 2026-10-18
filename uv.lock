@@ -552,6 +552,7 @@ source = { editable = "." }
 dependencies = [
     { name = "jsonschema" },
     { name = "numpy" },
+    { name = "opencv-python" },
     { name = "paho-mqtt" },
     { name = "pyyaml" },
     { name = "supervision" },
@@ -568,6 +569,7 @@ dev = [
 requires-dist = [
     { name = "jsonschema", specifier = ">=4.26.0" },
     { name = "numpy", specifier = ">=2.5.4" },
+    { name = "opencv-python", specifier = ">=5.0.0.93" },
     { name = "paho-mqtt", specifier = ">=2.1.0" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "supervision", specifier = ">=0.31.0" },
