@@ -92,3 +92,32 @@ launcher** (signals, leftover containers).
   not just arm64.
 - Channel 1's main stream through go2rtc: HEVC, 960x1080, 30 fps. That is not
   16:9 (see 2.3).
+
+## 2.2 go2rtc against the DVR
+
+Date: 2026-10-18. go2rtc 1.9.10 in a container (the 2.1 launcher), user
+`sentinel` (live view only), stream `garagem` = channel 1, main stream
+(`subtype=0`).
+
+Result: **one DVR session serves every local consumer, and the DVR serves
+HomeView's 8 substreams at the same time.**
+
+- go2rtc connects to the DVR only when the first consumer asks for the stream.
+  With two FFmpeg readers on `rtsp://127.0.0.1:8554/garagem` (and later a third),
+  `netstat` inside the container showed exactly one connection to
+  192.0.2.10:554 and one local connection per reader.
+- The connection to the DVR goes through the containers' NAT and does not appear
+  in the Mac's `netstat`/`lsof`; count it from inside the container
+  (`container exec <name> netstat -tn`).
+- With HomeView's grid open (8 substream sessions, owned by HomeView in `lsof`)
+  plus go2rtc's main stream, the DVR held 9 sessions:
+  - The restream delivered the full 30 fps (259 frames in 10 s, speed 1.03x);
+    a new reader got its first frame in about 1 s. The two background readers
+    logged no errors over several minutes.
+  - HomeView's 8 tiles kept playing. Closing and reopening the panel while
+    go2rtc held its session brought all 8 back.
+- HomeView's tiles looked a little laggy, but just as laggy with Sentinel fully
+  stopped (no container, no readers, no DVR connection from Sentinel), so it is
+  not caused by Sentinel. It may be worth a look in HomeView later.
+- The Mac stayed light: each FFmpeg reader decoding the main stream in software
+  used about 7% CPU; load average about 2.
