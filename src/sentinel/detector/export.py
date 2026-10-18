@@ -50,7 +50,26 @@ def export(name: str, imgsz: tuple[int, int], models_dir: Path = MODELS_DIR) -> 
     return target
 
 
-def record(path: Path, name: str, imgsz: tuple[int, int], versions: dict[str, str]) -> None:
+def record(
+    path: Path,
+    name: str,
+    imgsz: tuple[int, int],
+    versions: dict[str, str],
+    today: date | None = None,
+) -> None:
+    """Write the model's row in the README, keeping the rows of the other models."""
+    prefix = f"| `{name}.mlpackage` |"
+    others = []
+    if path.exists():
+        others = [
+            line
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.startswith("| `") and not line.startswith(prefix)
+        ]
+    row = (
+        f"{prefix} {imgsz[0]} x {imgsz[1]} | {(today or date.today()).isoformat()} "
+        f"| {versions['ultralytics']} | {versions['coremltools']} | {versions['torch']} |"
+    )
     lines = [
         "# Models",
         "",
@@ -59,8 +78,7 @@ def record(path: Path, name: str, imgsz: tuple[int, int], versions: dict[str, st
         "",
         "| Model | Input (h x w) | Exported | Ultralytics | coremltools | PyTorch |",
         "|---|---|---|---|---|---|",
-        f"| `{name}.mlpackage` | {imgsz[0]} x {imgsz[1]} | {date.today().isoformat()} "
-        f"| {versions['ultralytics']} | {versions['coremltools']} | {versions['torch']} |",
+        *sorted([*others, row]),
         "",
         "Ultralytics YOLO is AGPL-3.0, acceptable for this personal, undistributed project.",
         "",
