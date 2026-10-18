@@ -4,7 +4,7 @@
 UV    := uv
 MODEL ?= yolo11n
 
-.PHONY: setup secrets test lint
+.PHONY: setup secrets test lint record replay
 
 # Installs the dependencies and exports the detection model to CoreML. The
 # export needs PyTorch, which is removed again afterwards (the final sync).
@@ -17,6 +17,15 @@ setup:
 # credentials; everything is stored in the login Keychain.
 secrets:
 	$(UV) run python -m sentinel.secrets setup
+
+# make record CAMERA=garagem MINUTES=10: save a clip from the gateway in clips/.
+record:
+	$(UV) run python -m sentinel.detector.replay record --camera $(CAMERA) --minutes $(or $(MINUTES),10)
+
+# make replay CLIP=clips/garagem-noite.mp4 CAMERA=garagem: print the events the
+# clip would produce; nothing is published.
+replay:
+	$(UV) run python -m sentinel.detector.replay replay --clip $(CLIP) --camera $(CAMERA)
 
 test:
 	$(UV) run pytest -q
