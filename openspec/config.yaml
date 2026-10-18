@@ -1,0 +1,62 @@
+schema: spec-driven
+
+context: |
+  Product: HomeView Sentinel, an always-on service on the home Mac that watches the
+  street-facing cameras of the home DVR, detects motorcycles (with or without
+  a rider) and cars that stay stopped in front of the house for too long, and sends a
+  push notification to the user's iPhone. Personal project: never distributed, no cloud
+  video processing, video never leaves the home network. Notification copy is in
+  Portuguese (pt-BR); code, docs and specs are in English.
+
+  Architecture (decided before the first change):
+  - Runs on the user's MacBook Air (Apple silicon, macOS 26). The Mac sleeping, rebooting
+    for updates or leaving home stops the service: a known and accepted risk. A dedicated
+    always-on box (e.g. an Intel N100 mini PC) may replace the Mac later.
+  - Network-only services run as Linux containers with Apple's `container` tool (not
+    Docker Desktop): go2rtc (stream gateway), Mosquitto (MQTT broker), ntfy (push server)
+    and the notifier.
+  - The detector runs natively on macOS (Python, supervised by launchd), because
+    containers on macOS cannot use VideoToolbox or the Neural Engine. Inference uses an
+    Ultralytics YOLO model exported to CoreML, behind an inference-backend interface so
+    that OpenVINO on a mini PC can replace it without touching the rest.
+  - Components talk only through MQTT events with a versioned JSON contract. The detector
+    never knows who consumes its events. A future Samsung TV app (Tizen, UN50BU8000GXZD)
+    and any other client are just new subscribers; the TV is out of scope for now.
+  - Phone: an iPhone. Push goes through a self-hosted ntfy server with upstream ntfy.sh
+    (required for instant delivery on iOS: only a poll request leaves home, the message
+    and the snapshot stay on the Mac). Away from home, the phone reaches the Mac through
+    Tailscale.
+
+  Reference project: ../home-view (HomeView, the user's Swift menu bar camera viewer).
+  Read it for verified DVR facts and conventions; NEVER modify it.
+
+  Domain (verified against the real device in HomeView):
+  - DVR: 8 channels, on the LAN at
+    192.0.2.10. Ports: 554 RTSP, 80 HTTP.
+  - Live stream: rtsp://HOST:554/cam/realmonitor?channel=N&subtype=S
+    (N = 1..8; S = 0 main stream, 1 substream). Digest auth without qop.
+  - Substreams: H.264 352x240 at 7 fps (too small for detection at street distance).
+    Main streams: H.265; channels 1-7 are 960x1080 ("1080N", non-square pixels, meant to
+    be shown at 16:9), channel 8 is 1280x720; 15-30 fps.
+  - Channels 7 and 8 have no camera: they stream a black picture that still "plays".
+  - The DVR accepted 8 simultaneous RTSP sessions from one user; more is untested.
+  - The DVR locks a user for about 30 minutes after about 5 failed logins, and user names
+    are case-sensitive. Never retry a rejected login in a loop.
+  - The DVR's clock was about 20 minutes ahead of the Mac: event times use the Mac clock.
+  - Sentinel uses its own restricted DVR user (live view only), separate from HomeView's,
+    so a mistake in one cannot lock the other. Credentials live in the macOS Keychain,
+    never in code, config files, container images, events or logs.
+  - The restricted user cannot call the DVR's config CGI endpoints ("Invalid Authority!"):
+    rely on RTSP only.
+  - Never suggest port-forwarding the DVR or any Sentinel service; remote access is
+    through Tailscale only.
+
+  Tech stack: Python 3.12 managed with uv, pytest, ruff; FFmpeg (Homebrew) for decoding;
+  Makefile for every routine command. We use conventional commits.
+
+rules:
+  tasks:
+    - 'Each subtask is exactly one commit. End every subtask line with its Conventional Commits message, as "— commit: `type(scope): summary`".'
+    - "The commit holds the subtask's code, its tests, and tasks.md with that box ticked; every commit passes the unit tests (`make test`)."
+    - "Problems found later get their own `fix(scope): …` commit; never amend an earlier subtask's commit."
+    - "Subtasks that only investigate or verify still produce a commit, by writing their findings or results to a file."
