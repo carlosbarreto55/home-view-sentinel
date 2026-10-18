@@ -2,7 +2,7 @@ Each subtask is exactly one commit, using Conventional Commits with the message 
 
 ## 1. Project setup
 
-- [ ] 1.1 Python 3.12 project with uv (`pyproject.toml`, package `sentinel` under `src/`, pytest and ruff configured), `.gitignore` (`.venv`, `config/sentinel.yaml`, `clips/`, `models/*.mlpackage`, `docs/zone-preview-*.png`, `.DS_Store`), a `Makefile` with `setup` and `test`, and one passing test — commit: `build: add Python project, Makefile and gitignore`
+- [x] 1.1 Python 3.12 project with uv (`pyproject.toml`, package `sentinel` under `src/`, pytest and ruff configured), `.gitignore` (`.venv`, `config/sentinel.yaml`, `clips/`, `models/*.mlpackage`, `docs/zone-preview-*.png`, `.DS_Store`), a `Makefile` with `setup` and `test`, and one passing test — commit: `build: add Python project, Makefile and gitignore`
 - [ ] 1.2 Configuration: `config/sentinel.example.yaml` (cameras, zones, thresholds, sampling, model, quiet hours, ntfy topic) and `sentinel.config` loading and validating it, with errors naming the field (e.g. `cameras[garagem].zones[calcada].polygon`); tests for a valid file and each kind of error — commit: `feat(config): load and validate sentinel.yaml`
 - [ ] 1.3 Keychain helper over the `security` CLI (set, get, delete generic passwords under `com.carloseduardo.homeview-sentinel`), and `make secrets` asking for the DVR user and password and generating the broker and ntfy credentials; tests with a test-only service name, cleaned up after each test — commit: `feat(secrets): store service credentials in the Keychain`
 

@@ -1,0 +1,16 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Local configuration (sentinel.example.yaml is committed)
+config/sentinel.yaml
+
+# Recorded clips, exported models and zone previews
+clips/
+models/*.mlpackage
+docs/zone-preview-*.png
+
+.DS_Store
