@@ -15,6 +15,16 @@ Pure logic driven only by observations and the frames' clock (``t``, seconds):
   If it settles at a new spot (a rider moving forward a little), that spot
   becomes the resting spot.
 - Alerts are emitted on a frame where the vehicle is at rest.
+
+Avoiding duplicate alerts for the same vehicle:
+
+- Cooldown: after a ``dwell.started`` for a class in a zone, no other one for
+  that class and zone for 10 minutes, unless the first vehicle was seen leaving
+  the zone. (A vehicle that ended because it was lost keeps the cooldown: the
+  tracker losing and re-finding a parked car must not alert twice.)
+- Re-identification: a new track that comes to rest within 5% of the diagonal
+  of an alerted vehicle of the same class and zone that was lost less than
+  2 minutes ago is that vehicle: it inherits its ``since`` and its alert.
 """
 
 from __future__ import annotations
@@ -140,7 +150,10 @@ class DwellMonitor:
         self.diagonal = math.hypot(*frame_size)
         self.radius = rules.still_max_movement * self.diagonal
         self.new_id = new_id
+        self.reid_radius = rules.reid_max_distance * self.diagonal
         self._tracks: dict[str, _Track] = {}
+        self._lost_alerted: list[_Track] = []  # ended because they were lost
+        self._cooldowns: dict[tuple[str, str], float] = {}  # (zone, class) -> alert time
 
     def phase(self, track_id: str) -> Phase | None:
         track = self._tracks.get(track_id)
@@ -149,6 +162,8 @@ class DwellMonitor:
     def update(self, t: float, observations: list[Observation]) -> list[Action]:
         actions: list[Action] = []
         seen: set[str] = set()
+        in_zone: list[tuple[_Track, TrackedVehicle]] = []
+        # First note who is where, so re-identification knows who is lost on this frame.
         for obs in observations:
             vehicle = obs.vehicle
             seen.add(vehicle.track_id)
@@ -161,9 +176,12 @@ class DwellMonitor:
                 track = _Track(vehicle.track_id, obs.zone, last_seen=t)
                 self._tracks[vehicle.track_id] = track
             track.last_in_zone = t
-            action = self._observe(track, t, vehicle)
-            if action:
-                actions.append(action)
+            in_zone.append((track, vehicle))
+        for track, vehicle in in_zone:
+            if track.track_id in self._tracks:  # not taken over by re-identification
+                action = self._observe(track, t, vehicle)
+                if action:
+                    actions.append(action)
         for track in list(self._tracks.values()):
             if track.last_in_zone != t:
                 action = self._absent(track, t, detected=track.track_id in seen)
@@ -185,6 +203,7 @@ class DwellMonitor:
                 track.since = track.samples[0][0]
                 track.rest = _centroid([p for _, p in track.samples])
                 track.away_since = None
+                self._reidentify(track, t, vehicle)
             return None
 
         at_rest = self._at_rest(track, t, point)
@@ -193,9 +212,42 @@ class DwellMonitor:
                 if t - track.away_since >= self.rules.movement_grace:
                     self._to_moving(track)
                 return None
-            if t - track.since >= self.rules.thresholds[vehicle.cls]:
+            if t - track.since >= self.rules.thresholds[vehicle.cls] and not self._cooling(
+                track.zone, vehicle.cls, t
+            ):
                 return self._alert(track, t, vehicle)
         return None
+
+    def _cooling(self, zone: Zone, cls: str, t: float) -> bool:
+        alerted_at = self._cooldowns.get((zone.id, cls))
+        return alerted_at is not None and t - alerted_at < self.rules.cooldown
+
+    def _reidentify(self, track: _Track, t: float, vehicle: TrackedVehicle) -> None:
+        """Take over the alert of a lost vehicle resting at the same spot, if there is one."""
+        self._lost_alerted = [
+            old for old in self._lost_alerted if t - old.last_in_zone < self.rules.reid_max_age
+        ]
+        lost_now = [
+            old for old in self._tracks.values() if old.phase is Phase.ALERTED and old.last_seen < t
+        ]
+        candidates = [
+            old
+            for old in self._lost_alerted + lost_now
+            if old.zone.id == track.zone.id
+            and old.started.cls == vehicle.cls
+            and t - old.last_in_zone < self.rules.reid_max_age
+            and math.dist(old.rest, track.rest) < self.reid_radius
+        ]
+        if not candidates:
+            return
+        old = min(candidates, key=lambda c: math.dist(c.rest, track.rest))
+        if old in self._lost_alerted:
+            self._lost_alerted.remove(old)
+        else:
+            del self._tracks[old.track_id]
+        track.phase = Phase.ALERTED
+        track.since = old.since
+        track.started = old.started
 
     def _still_over_window(self, track: _Track, t: float) -> bool:
         first = track.samples[0][0]
@@ -231,6 +283,7 @@ class DwellMonitor:
 
     def _alert(self, track: _Track, t: float, vehicle: TrackedVehicle) -> DwellStart:
         track.phase = Phase.ALERTED
+        self._cooldowns[(track.zone.id, vehicle.cls)] = t
         track.started = DwellStart(
             event_id=self.new_id(),
             track_id=track.track_id,
@@ -255,6 +308,13 @@ class DwellMonitor:
             limit = self.rules.movement_grace if out_of_zone else self.rules.end_grace
             if gone_for >= limit:
                 del self._tracks[track.track_id]
+                key = (track.zone.id, track.started.cls)
+                if out_of_zone:
+                    # Seen leaving: another vehicle may alert at once.
+                    if self._cooldowns.get(key) == track.started.at:
+                        del self._cooldowns[key]
+                else:
+                    self._lost_alerted.append(track)
                 return DwellEnd(
                     started=track.started,
                     at=t,

@@ -261,3 +261,98 @@ def test_time_passes_without_frames():
     sim = Sim()
     sim.stay(150)
     assert sim.monitor.update(sim.t + 11, []) != []
+
+
+# --- no duplicate alerts for the same vehicle -----------------------------------
+
+
+def test_the_tracker_losing_a_parked_car_at_night_does_not_alert_again():
+    sim = Sim()
+    sim.stay(150, track_id="garagem-1")  # alerted at 120 s
+    sim.nothing(40)  # headlights blind the detector
+    sim.stay(60, track_id="garagem-7", x=650)  # found again, new identifier, same place
+    sim.drive(3, track_id="garagem-7", x0=650, speed=300, zone=False)
+    sim.nothing(5)
+    assert len(sim.starts()) == 1
+    first = sim.starts()[0][1]
+    last_end = sim.ends()[-1][1]
+    # The car that leaves is still the first alert, stopped since the original stop.
+    assert last_end.started is first
+    assert last_end.seconds == pytest.approx(150 + 40 + 60, abs=1)
+
+
+def test_a_new_identifier_while_the_alerted_car_is_briefly_lost_neither_ends_nor_alerts():
+    sim = Sim()
+    sim.stay(150, track_id="garagem-1")
+    sim.nothing(1)
+    sim.stay(60, track_id="garagem-2", x=645)
+    assert len(sim.starts()) == 1
+    assert sim.ends() == []
+    assert sim.monitor.phase("garagem-2") is Phase.ALERTED
+    assert sim.monitor.phase("garagem-1") is None
+
+
+def test_one_car_leaves_and_another_arrives_three_minutes_later():
+    sim = Sim()
+    sim.stay(150, track_id="garagem-1")
+    sim.drive(3, track_id="garagem-1", x0=640, speed=300, zone=False)
+    sim.nothing(180)
+    sim.drive(2, track_id="garagem-2", speed=300)
+    sim.stay(125, track_id="garagem-2", x=600)
+    starts = sim.starts()
+    assert [s.track_id for _, s in starts] == ["garagem-1", "garagem-2"]
+    assert len(sim.ends()) == 1
+
+
+def test_another_car_parking_at_the_same_spot_right_after_one_left_alerts():
+    sim = Sim()
+    sim.stay(150, track_id="garagem-1")
+    sim.drive(3, track_id="garagem-1", x0=640, speed=300, zone=False)
+    sim.nothing(30)
+    sim.stay(125, track_id="garagem-2")  # same spot, 33 s later
+    assert [s.track_id for _, s in sim.starts()] == ["garagem-1", "garagem-2"]
+
+
+def test_cooldown_stops_a_second_alert_when_reidentification_misses():
+    sim = Sim()
+    sim.stay(150, track_id="garagem-1", x=400)
+    sim.nothing(15)  # lost: ended after 10 s
+    sim.stay(130, track_id="garagem-2", x=600)  # 200 px away: not the same spot
+    assert len(sim.starts()) == 1
+
+
+def test_cooldown_is_per_class():
+    sim = Sim()
+    sim.run(
+        130,
+        lambda _: [
+            in_zone(vehicle("garagem-1", 300, 600, cls="car")),
+            in_zone(vehicle("garagem-2", 900, 600, cls="motorcycle")),
+        ],
+    )
+    assert sorted(s.cls for _, s in sim.starts()) == ["car", "motorcycle"]
+
+
+def test_cooldown_expires_after_ten_minutes():
+    sim = Sim()
+    sim.stay(150, track_id="garagem-1", x=300)
+    sim.nothing(15)  # lost, keeps the cooldown
+    sim.nothing(600)
+    sim.stay(125, track_id="garagem-2", x=900)
+    assert [s.track_id for _, s in sim.starts()] == ["garagem-1", "garagem-2"]
+
+
+def test_reidentification_only_within_two_minutes():
+    sim = Sim(DwellRules(thresholds={"motorcycle": 30, "car": 120}, cooldown=0))
+    sim.stay(150, track_id="garagem-1")
+    sim.nothing(130)
+    sim.stay(125, track_id="garagem-2")
+    assert [s.track_id for _, s in sim.starts()] == ["garagem-1", "garagem-2"]
+
+
+def test_reidentification_needs_the_same_class():
+    sim = Sim(DwellRules(thresholds={"motorcycle": 30, "car": 120}, cooldown=0))
+    sim.stay(150, track_id="garagem-1", cls="car")
+    sim.nothing(20)
+    sim.stay(40, track_id="garagem-2", cls="motorcycle")
+    assert [s.cls for _, s in sim.starts()] == ["car", "motorcycle"]
