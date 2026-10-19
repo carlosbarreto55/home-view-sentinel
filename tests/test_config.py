@@ -128,6 +128,11 @@ def test_zone_with_two_points_names_the_field():
             "letters",
         ),
         (
+            lambda d: d["notifications"].update(ntfy_base_url="http://mac.local:2586"),
+            "notifications.ntfy_base_url",
+            "https://",
+        ),
+        (
             lambda d: d["notifications"]["quiet_hours"].update(start=1380),
             "notifications.quiet_hours.start",
             "quoted",
@@ -203,3 +208,10 @@ def test_quiet_hours_contains(start, end, inside, outside):
     quiet = config.QuietHours(start, end)
     assert all(quiet.contains(t) for t in inside)
     assert not any(quiet.contains(t) for t in outside)
+
+
+def test_ntfy_base_url_is_optional_and_loses_its_trailing_slash():
+    data = example()
+    assert config.from_dict(data).notifications.ntfy_base_url is None
+    data["notifications"]["ntfy_base_url"] = "https://mac.tail1234.ts.net/"
+    assert config.from_dict(data).notifications.ntfy_base_url == "https://mac.tail1234.ts.net"

@@ -44,6 +44,9 @@ snapshots:
 
 notifications:
   ntfy_topic: sentinel
+  # The Mac's HTTPS address on the tailnet (Tailscale Serve), used by the ntfy
+  # server; `make install` prints it. Example: https://mac-name.tailnet-name.ts.net
+  ntfy_base_url: null
   timezone: Etc/GMT+4
   # Send "Saiu após …" when an alerted vehicle leaves (useful while calibrating).
   send_ended: false

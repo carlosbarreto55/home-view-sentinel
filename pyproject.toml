@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "HomeView Sentinel: alerts on the iPhone when a vehicle stays stopped in front of the house"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "bcrypt>=4.3",
     "coremltools>=9.0",
     "jsonschema>=4.26.0",
     "numpy>=2,<2.4",

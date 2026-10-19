@@ -41,3 +41,8 @@ def gateway_stop_marker() -> Path:
 def broker_dir() -> Path:
     """Mosquitto's rendered configuration (``config/``) and persistence (``data/``)."""
     return data_dir() / "broker"
+
+
+def ntfy_dir() -> Path:
+    """ntfy's user database, message cache and attachment cache."""
+    return data_dir() / "ntfy"

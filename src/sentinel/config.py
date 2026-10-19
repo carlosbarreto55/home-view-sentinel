@@ -81,6 +81,9 @@ class QuietHours:
 @dataclass(frozen=True)
 class Notifications:
     ntfy_topic: str = "sentinel"
+    # The Mac's Tailscale HTTPS address, e.g. https://mac.tailnet.ts.net (needed by
+    # the ntfy server, which gives the phone links to attachments with it).
+    ntfy_base_url: str | None = None
     timezone: str = "Etc/GMT+4"
     send_ended: bool = False
     quiet_hours: QuietHours | None = None
@@ -228,6 +231,14 @@ def _notifications(s: _Section) -> Notifications:
     topic = s.string("ntfy_topic", n.ntfy_topic)
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", topic):
         raise ConfigError(s.path("ntfy_topic"), "use letters, digits, - or _ (up to 64)")
+    base_url = None
+    if s.has("ntfy_base_url") and s.raw("ntfy_base_url") is not None:
+        base_url = s.string("ntfy_base_url", "").rstrip("/")
+        if not re.fullmatch(r"https://[A-Za-z0-9.-]+(:\d+)?", base_url):
+            raise ConfigError(
+                s.path("ntfy_base_url"),
+                "must be the Mac's https:// address on the tailnet, e.g. https://mac.tailnet.ts.net",
+            )
     timezone = s.string("timezone", n.timezone)
     try:
         ZoneInfo(timezone)
@@ -242,6 +253,7 @@ def _notifications(s: _Section) -> Notifications:
         q.no_unknown_keys()
     value = Notifications(
         ntfy_topic=topic,
+        ntfy_base_url=base_url,
         timezone=timezone,
         send_ended=s.boolean("send_ended", n.send_ended),
         quiet_hours=quiet,
