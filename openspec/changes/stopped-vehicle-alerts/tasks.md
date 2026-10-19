@@ -15,7 +15,7 @@ Findings from each spike subtask are written to `docs/spike-notes.md` in the sam
 - [x] 2.3 FFmpeg with VideoToolbox: decode channel 1's main stream at `fps=5,scale=1280:720` to a raw pipe; record CPU and memory, time to first frame, and confirm the 16:9 picture — commit: `docs(spike): decode main stream with VideoToolbox`
 - [x] 2.4 YOLO on CoreML: export `yolo11n` and `yolo11s` with NMS; run both on frames saved by day and at night from the street cameras (main stream at 1280x720 and the substream); record latency per frame, and whether cars, motorcycles and riders at the gate and across the street are found; choose the model and the stream — commit: `docs(spike): choose YOLO model and stream for detection`
 - [x] 2.5 ntfy on the iPhone: run ntfy in a container with `upstream-base-url`, `deny-all` and an attachment cache; expose it with Tailscale Serve; subscribe from the ntfy iOS app; check instant delivery with the phone locked, at home and on mobile data, and that an attached JPEG shows — commit: `docs(spike): deliver ntfy pushes to the iPhone over Tailscale`
-- [ ] 2.6 Write the spike findings into design.md (Risks, decisions 2, 4, 6 and 11, Open Questions); if Apple `container` failed 2.1, the switch to Colima for the same images is recorded there — commit: `docs(openspec): record spike findings in design`
+- [x] 2.6 Write the spike findings into design.md (Risks, decisions 2, 4, 6 and 11, Open Questions); if Apple `container` failed 2.1, the switch to Colima for the same images is recorded there — commit: `docs(openspec): record spike findings in design`
 
 ## 3. Stream gateway
 

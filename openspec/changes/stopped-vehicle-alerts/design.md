@@ -43,9 +43,9 @@ homeview-sentinel/
     detector/                 frame reader, inference backends, association, tracking,
                               zones, dwell state machine, snapshots, pipeline, replay
     bus/                      event models, MQTT client wrapper, status/LWT
-    notifier/                 subscription, rules (quiet hours, offline), ntfy client, pt-BR text
-  containers/                 go2rtc/, mosquitto/, ntfy/, notifier/ (Containerfile + configs)
-  launchd/                    plist templates rendered by `make install`
+    notifier/                 subscription, rules (quiet hours, offline), ntfy client, pt-BR text,
+                              ntfy server launcher
+    runtime/                  container launcher, launchd agents, logging, make up/down/status
   tests/                      pytest
   docs/                       spike-notes.md, verificacao-manual.md
 ```
@@ -53,7 +53,16 @@ homeview-sentinel/
 ### 2. Containers with Apple's `container`, supervised by launchd
 go2rtc, Mosquitto, ntfy and the notifier only need the network, so they run as Linux containers with Apple's `container` tool (one lightweight VM per container, no Docker Desktop). The detector runs natively because no container on macOS can reach VideoToolbox or the Neural Engine.
 
-Each container runs in the foreground (`container run --rm …`) under its own launchd agent with `KeepAlive`, so launchd restarts it if it exits, exactly like the native detector. A first agent runs `container system start` at login and the others wait for it. Ports are published on 127.0.0.1 only; ntfy is additionally reached from the tailnet through Tailscale Serve (decision 11). Containers reach each other through the host's published loopback ports or the `container` network's DNS, whichever the spike shows to be reliable.
+Each container runs in the foreground (`container run --rm …`) under its own launchd agent with `KeepAlive`, so launchd restarts it if it exits, exactly like the native detector. A first agent runs `container system start` at login and the others wait for it. Ports are published on 127.0.0.1 only; ntfy is additionally reached from the tailnet through Tailscale Serve (decision 11).
+
+The spike (2.1) confirmed this works with `container` 1.5.0, with these rules:
+- `container system start` registers its services as transient launchd jobs that do not survive a logout or reboot, so the login agent that starts it is required. Each container launcher waits for the system to be running before it starts its container.
+- `container run` does not forward SIGTERM, and killing the client leaves the container running. So each container has a **native Python launcher** that: removes a leftover container with the same name (`container stop` and `container delete`), runs `container run --rm --name …` as a child (not `exec`), stops the container with `container stop` when it receives SIGTERM, and exits non-zero when the container exits on its own, so launchd restarts it.
+- Only servers run in containers: go2rtc, Mosquitto and ntfy. Every client (the launchers, the detector and the notifier) runs natively and uses the published loopback ports, so no container ever talks to another (containers have no DNS by default, their addresses change on every start, and a port published on 127.0.0.1 is the Mac's loopback, not reachable from another container).
+- The notifier therefore runs natively under launchd, like the detector, instead of in a container: it only needs Python, the broker and ntfy on loopback.
+- The containers use the upstream images pinned by version (`alexxit/go2rtc:1.9.10`, `eclipse-mosquitto`, `binwiederhier/ntfy:v2.14.0`), with no Containerfile of our own. Each launcher renders the service's configuration at start into Application Support and mounts it; secrets reach the container only as environment variables (`-e NAME`, the value inherited from the launcher, never on a command line) or as hashed password files.
+- Each container gets explicit CPU and memory limits (the default is 4 CPUs and 1 GB each).
+- Cold start of a cached image is under a second; launcher start to go2rtc serving is about 2 s.
 
 *Alternatives:* Docker Desktop or Colima (heavier, another VM manager, licensing for Docker Desktop); everything native with Homebrew services (simpler, but loses the isolation and makes the later move to a Linux mini PC a rewrite instead of a copy). The spike (task 2.1) confirms foreground supervision, restart, port publishing on loopback and LAN access to the DVR from inside a container before anything else depends on it.
 
@@ -66,10 +75,14 @@ Before starting go2rtc, the launcher runs `rtsp_probe` (a Python port of HomeVie
 
 Only the cameras listed in `sentinel.yaml` are configured in go2rtc; other channels are never requested.
 
+The spike (2.2) confirmed that go2rtc opens the DVR session only when the first consumer asks, and holds exactly one session per stream however many consumers read it; the DVR served HomeView's 8 substreams and go2rtc's main stream (9 sessions) together. It also found that **go2rtc logs the full source URL, password included, whenever the DVR connection fails**. The launcher therefore never lets go2rtc's output reach a log as is: every line goes through a filter that replaces `rtsp://<anything>@` with `rtsp://<redacted>@` and removes the Keychain values themselves, and a test covers the filter.
+
 ### 4. Which stream feeds the detector
 The substream (352x240) leaves a motorcycle across the street only a few pixels tall, too few for a reliable detection. The detector therefore reads the **main stream** of each watched camera and samples it down. HEVC decoding is done by FFmpeg with VideoToolbox, so the 30 fps decode costs little; frames are dropped to the sampling rate before they reach Python.
 
 If the spike (2.4) shows that detection on the substream is good enough after all, or the user raises the substream resolution on the DVR, `sentinel.yaml` can point a camera at `subtype=1`; nothing else changes.
+
+The spikes confirmed the main stream. It is HEVC Main, 960x1080, 30 fps, about 1.6 Mbit/s, a keyframe every 2 s, with no sample aspect ratio signalled: `scale=1280:720` gives the right 16:9 picture (2.3). VideoToolbox decodes it at `fps=5` for about 9% of one core and 97 MB (software: about 14%); the first frame takes about 2 s when go2rtc is already connected, 3.7 s when it has to open the DVR session. On the night recordings (2.4) the substream found a motorcycle at the curb as well as the main stream, but objects across the street are a few pixels wide there and are lost. The main stream stays the default for both street cameras.
 
 Total sessions: HomeView's own (up to 8, only while its panel is open) plus one per watched camera from go2rtc. The spike (2.2) checks that the DVR serves HomeView's 8 substreams while go2rtc holds the watched main streams.
 
@@ -92,6 +105,8 @@ class InferenceBackend(Protocol):
 The CoreML backend loads an Ultralytics YOLO model exported with `yolo export format=coreml nms=True` (model size, nano or small, chosen in the spike from accuracy on the real cameras at night and latency) and keeps only `car`, `motorcycle` and `person` (COCO classes; `truck` and `bus` count as `car`). A fake backend replays scripted detections in tests. An OpenVINO backend for a future mini PC is a new class, nothing else.
 
 The exported model file is not committed; `make setup` exports it once and records the Ultralytics version and model name in `models/README.md`. Ultralytics is AGPL-3.0, acceptable for a project that is never distributed.
+
+The spike (2.4) chose **`yolo11s`**, exported at 384x640 with NMS, now the default. On the night recordings both sizes take under 3 ms per frame (yolo11s: median 2.7 ms on the main stream), so latency does not decide. `yolo11n` flickers on vehicles that do not move (it found the two parked garage cars in 314 of 602 frames, yolo11s in all of them), which would break tracks and restart dwell timers, and it misses small vehicles across the street that yolo11s finds. Both saw a real delivery motorcycle in every frame of its stop. Daytime frames are checked during calibration (task 6.6).
 
 ### 7. Motorcyclist association
 A `person` whose box's bottom half overlaps a `motorcycle` box by at least 30% of the person box's area is attached to that motorcycle as its rider, in the same frame. The tracked motorcycle is "with rider" when a rider was attached in at least half of its last 10 frames. Persons attached to a motorcycle are not tracked on their own. Pure function, unit tested.
@@ -174,10 +189,15 @@ iOS only wakes an app through APNs, so a self-hosted ntfy server must set `upstr
 
 Tailscale Serve (`tailscale serve --bg --https=443 http://127.0.0.1:2586`) gives the server a valid HTTPS certificate on `https://<mac>.<tailnet>.ts.net`, reachable from the iPhone at home and on mobile data, and nowhere else. The spike (2.5) confirms the iOS app subscribes to it, receives instantly with the screen locked, and shows the attachment.
 
+The spike (2.5) confirmed it: pushes arrived at once on the locked iPhone at home and on mobile data, with the snapshot and correct accents (non-ASCII header values are sent as RFC 2047 encoded words). Details that shape the implementation:
+- ntfy 2.14 is configured entirely with environment variables (`NTFY_BASE_URL`, `NTFY_UPSTREAM_BASE_URL`, `NTFY_LISTEN_HTTP`, `NTFY_BEHIND_PROXY`, `NTFY_AUTH_DEFAULT_ACCESS=deny-all`, the auth database and caches in the mounted data folder), and users, access and tokens are declarative (`NTFY_AUTH_USERS` with bcrypt hashes, `NTFY_AUTH_ACCESS`, `NTFY_AUTH_TOKENS`). The launcher builds them at start from the Keychain: `iphone` read-only on the topic, `notifier` write-only with the Keychain token. No password is stored in clear on disk.
+- The Mac's Tailscale name is set in `sentinel.yaml` (`notifications.ntfy_base_url`), because the Tailscale Mac app's CLI only works from a terminal (run in the background it fails with "The Tailscale GUI failed to start"), so a launchd agent cannot ask it. `make install` runs `tailscale serve` once, in the foreground. Serve needs HTTPS certificates enabled for the tailnet once, in the admin console.
+- The iOS app keeps no connection open (`subscribers=0`): ntfy.sh wakes it and it fetches the message and the attachment from the Mac.
+
 *Alternatives:* public ntfy.sh topics (simplest, but the snapshot of the street would be uploaded to a third party); Pushover (paid, third-party server); a Telegram bot (a chat, easy to mute and ignore); a native app with APNs (needs the paid Apple Developer Program; later, maybe).
 
 ### 12. The notifier
-A small Python service (container) subscribes to `sentinel/v1/events/+` and `sentinel/v1/status/detector`, and sends to ntfy with `PUT /<topic>` carrying the snapshot as the body and the message in headers (`Title`, `Message`, `Priority`, `Tags`, `Filename`). Message text and rules are pure functions with tests:
+A small Python service (native under launchd, see decision 2) subscribes to `sentinel/v1/events/+` and `sentinel/v1/status/detector`, and sends to ntfy with `PUT /<topic>` carrying the snapshot as the body and the message in headers (`Title`, `Message`, `Priority`, `Tags`, `Filename`). Message text and rules are pure functions with tests:
 - `dwell.started`, motorcycle with rider: title "Moto com piloto parada em frente de casa", priority high.
 - `dwell.started`, motorcycle without rider: "Moto parada em frente de casa", priority default.
 - `dwell.started`, car: "Carro parado em frente de casa", priority default.
@@ -206,11 +226,16 @@ The TV integration, later, will add consumers and nothing else: a TV agent subsc
 ## Risks / Trade-offs
 
 - [The Mac sleeps, reboots or leaves home, and nothing is watched] → Accepted by the user. The README says so plainly; the offline alert covers a detector crash, not a sleeping Mac. Moving to an always-on mini PC later is a copy of the containers plus a new inference backend.
-- [Apple's `container` is young: foreground supervision, restarts, loopback publishing or LAN access may misbehave] → Spike 2.1 before anything depends on it. Fallback: the same images and configs under Colima, with no change to the code.
-- [The DVR refuses extra sessions when HomeView's 8 substreams and go2rtc's main streams run together] → Spike 2.2. Fallback: watch fewer cameras, or have HomeView-like consumers read through go2rtc in a future change (HomeView itself is not modified here).
+- [Apple's `container` is young: foreground supervision, restarts, loopback publishing or LAN access may misbehave] → Spike 2.1 passed with the launcher rules in decision 2 (no SIGTERM forwarding, leftover containers, transient system services). Fallback: the same images and configs under Colima, with no change to the code.
+- [The Mac has IP forwarding on, and a container's own address on 192.168.64.0/24 answers from the Mac; a LAN device that routes that subnet through the Mac might reach go2rtc, whose RTSP server has no login, around the loopback-only publish] → Not reproduced from another device yet; the manual checklist (9.1) tries it from the phone. If it is reachable, go2rtc gets an RTSP user and password, or a `pf` rule blocks forwarding into the container subnet. Mosquitto and ntfy require authentication anyway.
+- [go2rtc logs the DVR password in the source URL when a connection fails] → Found in 2.2; the gateway launcher filters every line of go2rtc's output (decision 3), and log handlers redact `rtsp://user:pass@` everywhere.
+- [The DVR refuses extra sessions when HomeView's 8 substreams and go2rtc's main streams run together] → Spike 2.2: 9 sessions worked. Fallback: watch fewer cameras, or have HomeView-like consumers read through go2rtc in a future change (HomeView itself is not modified here).
+- [The DVR drops every connection at once now and then (five times in one evening of the 2.4 recordings)] → The frame reader reconnects with backoff and discards the camera's tracks, so a stop that spans a drop restarts its timer and its alert comes late; the camera-without-picture alert only fires after 10 minutes.
+- [The DVR's clock runs about 20–25 minutes ahead of the Mac] → Sentinel uses the Mac's clock everywhere; the DVR's on-screen time in snapshots is not used.
 - [A wrong DVR password locks the Sentinel user] → One probe before go2rtc starts, no restart on wrong credentials, a dedicated user so HomeView is never affected.
-- [Night (infrared, black and white), rain and headlights cause missed detections or false stops] → Model size chosen on night clips (spike 2.4), a minimum confidence, the movement grace, and calibration by replay before trusting it. The first weeks run with `dwell.ended` notifications on to see what triggers.
-- [Objects far across the street are too small] → Main stream at 1280x720, zones limited to the near side, model `small` if `nano` misses them.
+- [Night (infrared, black and white), rain and headlights cause missed detections or false stops] → Model size chosen on night clips (spike 2.4: yolo11s), a minimum confidence, the movement grace, and calibration by replay before trusting it. The first weeks run with `dwell.ended` notifications on to see what triggers.
+- [Objects far across the street are too small] → Main stream at 1280x720 and model `small` (both confirmed by 2.4), zones limited to the near side.
+- [The cameras see the parked cars in the garage all the time] → Zones must leave the garage out (calibration, 6.6); otherwise they would alert two minutes after the service starts.
 - [ByteTrack ID switches cause duplicate or missed alerts] → Cooldown and re-identification of a still track near a recent alerted one (decision 9), covered by tests.
 - [ntfy.sh is down or slow, delaying the iOS wake-up] → Messages still reach the app when it is opened; acceptable for a personal tool. Pushover can be added as a second adapter later.
 - [Ultralytics licensing (AGPL-3.0)] → Fine for a personal, undistributed project; the backend interface keeps a switch to another model runtime contained.
@@ -220,4 +245,6 @@ The TV integration, later, will add consumers and nothing else: a TV agent subsc
 
 - Which channels face the street, and where exactly the zones go: decided with the user during calibration (task 6.6), not in this design.
 - Whether to also watch the substream of other cameras later, for people on foot: out of scope here.
-- Whether the user will raise the substream resolution on the DVR (it would make the substream usable for detection and lighten decoding): optional, decided after spike 2.4; no DVR setting is changed by this change.
+- Whether the user will raise the substream resolution on the DVR: not needed after spike 2.4 (main stream decoding is cheap enough); no DVR setting is changed by this change.
+- A courier who gets off the motorcycle and stands next to it is attached as its rider only part of the time (half of the frames with yolo11s in 2.4), so the push is usually "Moto parada…" at default priority, which matches the spec ("a person sits on it"). Whether a person standing next to a stopped motorcycle should also make it "com piloto" (high priority) is for the user to decide after calibration.
+- How the models do by day: checked during calibration (6.6), together with the zones.
