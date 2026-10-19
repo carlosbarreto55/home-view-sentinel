@@ -21,7 +21,7 @@ Findings from each spike subtask are written to `docs/spike-notes.md` in the sam
 
 - [x] 3.1 `rtsp_probe`: one `DESCRIBE` for the configured camera, Digest answer (MD5, no `qop` and `qop=auth`), Basic fallback, 5 s timeout, results accepted / wrong credentials / not found; a fake RTSP server fixture for tests (challenge, accept, reject, silent) — commit: `feat(gateway): probe DVR credentials over RTSP`
 - [x] 3.2 go2rtc configuration rendered from `sentinel.yaml` (only the configured cameras, `${DVR_USER}`/`${DVR_PASSWORD}` placeholders with percent-encoding at start, RTSP on loopback, API and WebRTC off or loopback); test that the rendered file contains no secret — commit: `feat(gateway): render go2rtc configuration from cameras`
-- [ ] 3.3 Gateway container (`containers/go2rtc/`) and launcher: read the Keychain, run the probe, start go2rtc in the foreground; on wrong credentials publish/log "Usuário ou senha do DVR incorretos", write the stop marker and exit so launchd does not restart it; tests for the launcher's decisions with a fake probe — commit: `feat(gateway): start go2rtc after checking the DVR login`
+- [x] 3.3 Gateway container (`containers/go2rtc/`) and launcher: read the Keychain, run the probe, start go2rtc in the foreground; on wrong credentials publish/log "Usuário ou senha do DVR incorretos", write the stop marker and exit so launchd does not restart it; tests for the launcher's decisions with a fake probe — commit: `feat(gateway): start go2rtc after checking the DVR login`
 
 ## 4. Event bus
 

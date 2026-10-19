@@ -110,3 +110,17 @@ def test_setup_again_changes_dvr_password_and_keeps_generated_ones():
     assert secrets.get(secrets.DVR_PASSWORD, TEST_SERVICE) == "new"
     assert secrets.get(secrets.NTFY_NOTIFIER_TOKEN, TEST_SERVICE) == token
     assert secrets.get(secrets.mqtt_item("detector"), TEST_SERVICE) == broker
+
+
+def test_setup_lets_the_gateway_try_again_after_a_rejected_login(tmp_path):
+    marker = tmp_path / "stopped-wrong-login"
+    marker.write_text("Usuário ou senha do DVR incorretos\n")
+    answers, said = iter(["new", "new"]), []
+    secrets.setup(
+        ask=lambda _: "",
+        ask_secret=lambda _: next(answers),
+        say=said.append,
+        service=TEST_SERVICE,
+        stop_marker=marker,
+    )
+    assert not marker.exists()

@@ -129,12 +129,12 @@ class BusClient:
     def connected(self) -> bool:
         return self._connected.is_set()
 
-    def stop(self) -> None:
-        """Publish ``offline`` for this component and disconnect cleanly."""
+    def stop(self, detail: str = "stopped") -> None:
+        """Publish ``offline`` (with ``detail``) for this component and disconnect cleanly."""
         if self.connected:
             info = self._client.publish(
                 status_topic(self.component),
-                Status(OFFLINE, self.clock(), "stopped").to_json().encode(),
+                Status(OFFLINE, self.clock(), detail).to_json().encode(),
                 qos=1,
                 retain=True,
             )

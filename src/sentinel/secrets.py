@@ -18,6 +18,7 @@ import string
 import subprocess
 import sys
 from collections.abc import Callable
+from pathlib import Path
 
 SERVICE = "com.carloseduardo.homeview-sentinel"
 
@@ -124,8 +125,12 @@ def setup(
     ask_secret: Callable[[str], str] = getpass.getpass,
     say: Callable[[str], None] = print,
     service: str = SERVICE,
+    stop_marker: Path | None = None,
 ) -> None:
-    """Store the DVR credentials and generate the missing broker and ntfy ones."""
+    """Store the DVR credentials and generate the missing broker and ntfy ones.
+
+    ``stop_marker`` is the gateway's marker of a rejected login, removed here.
+    """
     current_user = get(DVR_USER, service) or "sentinel"
     user = ask(f"DVR user for Sentinel [{current_user}]: ").strip() or current_user
     while True:
@@ -139,6 +144,10 @@ def setup(
     set(DVR_USER, user, service)
     set(DVR_PASSWORD, password, service)
     say("Stored the DVR user and password.")
+    # A new login lets the gateway try again after a rejected one.
+    if stop_marker is not None and stop_marker.exists():
+        stop_marker.unlink()
+        say("The gateway will try the new login at the next `make up`.")
 
     generated = []
     for user_name in MQTT_USERS:
@@ -165,7 +174,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.command == "setup":
-            setup()
+            from sentinel.paths import gateway_stop_marker
+
+            setup(stop_marker=gateway_stop_marker())
     except KeychainError as error:
         print(error, file=sys.stderr)
         return 1
