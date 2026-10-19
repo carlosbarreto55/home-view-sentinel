@@ -153,3 +153,81 @@ core, and 1280x720 gives the right 16:9 picture.**
   1280x720 frame.
 - The DVR's on-screen clock was about 25 minutes ahead of the Mac (20:01 shown
   at about 19:36 local). Sentinel uses the Mac's clock everywhere.
+
+### Found later: go2rtc logs the DVR password
+
+When the DVR dropped every connection at once (20:06:57 local, while recording
+for 2.4), go2rtc logged one warning per stream with the full source URL,
+password included:
+`WRN … error="read tcp …->192.0.2.10:554: i/o timeout" url=rtsp://<user>:<password>@192.0.2.10:554/…`.
+Any lost connection does this, so go2rtc's output must never reach a log file
+as is. The gateway launcher (task 3.3) pipes go2rtc's output through a filter
+that replaces `rtsp://<anything>@` with `rtsp://<redacted>@`, and a test checks
+the filter. The spike launcher now does the same. The log file that had it was
+redacted, but the password was also shown in the development session, so the
+`sentinel` user's password should be changed on the DVR (then `make secrets`).
+
+The same drop showed that FFmpeg readers on the gateway exit when go2rtc loses
+its source, which the frame reader's backoff already handles.
+
+## 2.5 ntfy on the iPhone over Tailscale
+
+Date: 2026-10-18, about 20:10 local. ntfy 2.14.0 in a container
+(`binwiederhier/ntfy:v2.14.0`), Tailscale 1.104.1 (Mac app from Homebrew,
+`brew install --cask tailscale-app`, needs the Mac password), ntfy iOS app.
+Test pushes sent with `scripts/spike-ntfy.py`, which uses the notifier's real
+code (`messages.py`, `ntfy.py`).
+
+Result: **pushes arrive at once on the locked iPhone, at home and on mobile
+data, with the snapshot and correct pt-BR accents.**
+
+### Server
+
+- Configured entirely with environment variables, no config file:
+  `NTFY_BASE_URL=https://<mac>.<tailnet>.ts.net`,
+  `NTFY_UPSTREAM_BASE_URL=https://ntfy.sh`, `NTFY_LISTEN_HTTP=:80`,
+  `NTFY_BEHIND_PROXY=true`, `NTFY_AUTH_DEFAULT_ACCESS=deny-all`, and the auth
+  database, message cache and attachment cache in a mounted data folder.
+  Published on `127.0.0.1:2586` only.
+- Users, access and token are declarative (ntfy 2.14): `NTFY_AUTH_USERS`
+  (`user:bcrypt-hash:role`, comma-separated), `NTFY_AUTH_ACCESS`
+  (`user:topic:ro|wo`), `NTFY_AUTH_TOKENS` (`user:tk_…:label`). The launcher
+  builds them at start from the Keychain:
+  - `iphone`: bcrypt hash of the Keychain phone password, read-only on
+    `sentinel`.
+  - `notifier`: a random password nobody uses, write-only on `sentinel`; the
+    notifier authenticates with the Keychain token (`tk_` + 29 characters, the
+    format `make secrets` generates).
+  - The hash is made by `ntfy user hash` in a throwaway container, with the
+    password on stdin (it asks twice), so it is never on a command line.
+- Checked over HTTP: anonymous publish and read 403; notifier publish 200, read
+  403; phone read 200, publish 403; phone on another topic 403.
+
+### Tailscale Serve
+
+- The tailnet first needs Serve (and HTTPS certificates) enabled: the first
+  `tailscale serve` prints a link to the admin page. Then
+  `tailscale serve --bg --https=443 http://127.0.0.1:2586` gives
+  `https://mac.tailnet.ts.net/`, with a certificate fetched
+  on the first request. The setting survives on the Mac (`--bg`).
+- `/v1/health` answered `{"healthy":true}` over that address; anonymous read
+  still 403.
+- The Mac app's CLI (`/Applications/Tailscale.app/Contents/MacOS/Tailscale`)
+  fails with "The Tailscale GUI failed to start (CLIError error 3)" when run
+  without a terminal (backgrounded); it works in the foreground. `make install`
+  should run it in the foreground, once.
+
+### iPhone
+
+- In the ntfy app: Settings → Users → add `https://<mac>.<tailnet>.ts.net`
+  with user `iphone`; then subscribe to `sentinel` with "Use another server".
+  Tailscale on.
+- ntfy shows `subscribers=0`: the iOS app keeps no connection; ntfy.sh wakes it
+  through APNs and it fetches the message from the Mac.
+- Phone locked, on Wi-Fi: "O Sentinel voltou a vigiar" (default priority),
+  "Moto com piloto parada em frente de casa" with a live snapshot of camera 2
+  (high), and "O Sentinel parou de vigiar as câmeras" (high) all arrived at
+  once. Accents were right in the title and in the body (sent as an RFC 2047
+  `Message` header when the snapshot is the body), and the picture showed.
+- Phone locked, Wi-Fi off (mobile data), Tailscale on: the snapshot push
+  arrived at once and the picture loaded.
