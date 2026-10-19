@@ -23,6 +23,7 @@ from sentinel.detector.frames import FrameReader
 from sentinel.detector.inference import CoreMLBackend, model_path
 from sentinel.detector.pipeline import Detector
 from sentinel.gateway.go2rtc import local_url
+from sentinel.runtime import EXIT_DONE
 
 log = logging.getLogger("sentinel.detector")
 
@@ -50,8 +51,9 @@ def main(argv: list[str] | None = None) -> int:
         backend = CoreMLBackend(model_path(config.model.name), config.model.min_confidence)
         password = broker_password()
     except (config_module.ConfigError, FileNotFoundError, secrets.KeychainError) as error:
+        # Stays stopped (launchd restarts only failed exits) until the user fixes it.
         log.error("%s", error)
-        return 1
+        return EXIT_DONE
 
     publisher = bus.BusClient("detector", "detector", password)
     detector = Detector(

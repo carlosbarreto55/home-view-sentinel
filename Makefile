@@ -4,7 +4,7 @@
 UV    := uv
 MODEL ?= yolo11s
 
-.PHONY: setup secrets test lint record replay zone-preview
+.PHONY: setup secrets install test lint record replay zone-preview
 
 # Installs the dependencies and exports the detection model to CoreML. The
 # export needs PyTorch, which is removed again afterwards (the final sync).
@@ -38,3 +38,8 @@ test:
 lint:
 	$(UV) run ruff check src tests
 	$(UV) run ruff format --check src tests
+
+# Installs the launchd agents (every component starts now and at each login),
+# and serves ntfy on the tailnet with Tailscale Serve.
+install:
+	$(UV) run python -m sentinel.runtime install

@@ -1,0 +1,95 @@
+"""``python -m sentinel.runtime install``: what ``make install`` runs."""
+
+from __future__ import annotations
+
+import argparse
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+from sentinel import config as config_module
+from sentinel import secrets
+from sentinel.detector.inference import model_path
+from sentinel.notifier import ntfy_server
+from sentinel.runtime import launchd
+
+REPOSITORY = Path(__file__).resolve().parents[3]
+
+
+def problems(repository: Path) -> list[str]:
+    """What is missing before the agents can run."""
+    found = []
+    if not (repository / ".venv" / "bin" / "python").exists():
+        found.append("no .venv: run `make setup`")
+    try:
+        config = config_module.load(repository / config_module.DEFAULT_PATH)
+    except config_module.ConfigError as error:
+        found.append(f"config/sentinel.yaml: {error}")
+        config = None
+    if config is not None:
+        if not model_path(config.model.name).exists():
+            found.append(f"model {config.model.name} not exported: run `make setup`")
+        if not config.notifications.ntfy_base_url:
+            found.append(
+                "notifications.ntfy_base_url is not set in config/sentinel.yaml "
+                "(the Mac's https://<mac>.<tailnet>.ts.net address)"
+            )
+    items = [secrets.DVR_USER, secrets.DVR_PASSWORD, secrets.NTFY_PHONE_PASSWORD]
+    items += [secrets.NTFY_NOTIFIER_TOKEN] + [secrets.mqtt_item(u) for u in secrets.MQTT_USERS]
+    missing = [item for item in items if not secrets.get(item)]
+    if missing:
+        found.append("not in the Keychain: " + ", ".join(missing) + " (run `make secrets`)")
+    return found
+
+
+def tailscale_serve() -> str:
+    """Serve ntfy over HTTPS on the tailnet. The Tailscale Mac app's CLI only
+    works from a terminal, so this runs here, in the foreground, not in an agent."""
+    cli = shutil.which("tailscale") or "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+    command = [cli, "serve", "--bg", "--https=443", f"http://127.0.0.1:{ntfy_server.PORT}"]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=60, check=False)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return f"could not run Tailscale ({error}); run by hand: {' '.join(command)}"
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip().splitlines()
+        hint = detail[0] if detail else f"exit code {result.returncode}"
+        return (
+            f"Tailscale Serve failed ({hint}). Open Tailscale on the Mac, connect, "
+            f"then run `make install` again or: {' '.join(command)}"
+        )
+    return "Tailscale Serve forwards https://<this Mac>.ts.net to ntfy"
+
+
+def install() -> int:
+    found = problems(REPOSITORY)
+    if found:
+        print("Cannot install yet:")
+        for problem in found:
+            print(f"  - {problem}")
+        return 1
+    print(f"Installing the launchd agents in {launchd.agents_dir()}:")
+    launchd.install(REPOSITORY)
+    print(tailscale_serve())
+    settings = config_module.load(REPOSITORY / config_module.DEFAULT_PATH).notifications
+    print(
+        f"\niPhone: in the ntfy app, add the server {settings.ntfy_base_url} with user "
+        f"{secrets.NTFY_PHONE_USER} (password from `make secrets`) and subscribe to "
+        f"{settings.ntfy_topic!r}. `make status` shows each component."
+    )
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="sentinel.runtime")
+    commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("install", help="install and start the launchd agents")
+    args = parser.parse_args(argv)
+    if args.command == "install":
+        return install()
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

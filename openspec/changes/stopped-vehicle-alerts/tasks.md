@@ -55,7 +55,7 @@ Findings from each spike subtask are written to `docs/spike-notes.md` in the sam
 
 ## 8. Runtime
 
-- [ ] 8.1 launchd agent templates for the container runtime, gateway, broker, ntfy, notifier and detector (`KeepAlive`, log paths, environment from the Keychain through each launcher, gateway stop marker respected), and `make install` rendering and loading them — commit: `feat(runtime): run every component under launchd`
+- [x] 8.1 launchd agent templates for the container runtime, gateway, broker, ntfy, notifier and detector (`KeepAlive`, log paths, environment from the Keychain through each launcher, gateway stop marker respected), and `make install` rendering and loading them — commit: `feat(runtime): run every component under launchd`
 - [ ] 8.2 `make up`, `make down`, `make status` (retained statuses, launchd state, uptime, CPU) and `make logs`; daily log rotation with 7 days kept — commit: `feat(runtime): add management commands and log rotation`
 - [ ] 8.3 Measure one hour with two cameras (CPU, memory) and record it in `docs/spike-notes.md`; if it is over budget, lower the sampling rate or model size in the example config — commit: `docs(runtime): measure resource use with two cameras`
 
