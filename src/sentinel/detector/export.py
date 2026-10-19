@@ -88,7 +88,7 @@ def record(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="sentinel.detector.export")
-    parser.add_argument("--model", default="yolo11n", help="yolo11n or yolo11s")
+    parser.add_argument("--model", default="yolo11s", help="yolo11n or yolo11s")
     parser.add_argument("--imgsz", type=int, nargs=2, default=DEFAULT_IMGSZ, metavar=("H", "W"))
     parser.add_argument("--force", action="store_true", help="export again even if present")
     args = parser.parse_args(argv)

@@ -14,7 +14,7 @@ sampling:
 
 model:
   # Ultralytics model exported to CoreML by `make setup` (yolo11n or yolo11s).
-  name: yolo11n
+  name: yolo11s
   # Detections below this confidence are ignored.
   min_confidence: 0.4
 

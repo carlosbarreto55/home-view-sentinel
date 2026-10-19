@@ -45,7 +45,7 @@ class Sampling:
 
 @dataclass(frozen=True)
 class Model:
-    name: str = "yolo11n"
+    name: str = "yolo11s"
     min_confidence: float = 0.4
 
 

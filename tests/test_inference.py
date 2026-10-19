@@ -68,11 +68,11 @@ def test_names_metadata():
 
 
 @pytest.mark.skipif(
-    not model_path("yolo11n").exists(), reason="run `make setup` to export the model"
+    not model_path("yolo11s").exists(), reason="run `make setup` to export the model"
 )
 def test_coreml_backend_runs_on_a_frame():
     from sentinel.detector.inference import CoreMLBackend
 
-    backend = CoreMLBackend(model_path("yolo11n"))
+    backend = CoreMLBackend(model_path("yolo11s"))
     assert (backend.width, backend.height) == (640, 384)
     assert backend.detect(np.zeros((720, 1280, 3), dtype=np.uint8)) == []

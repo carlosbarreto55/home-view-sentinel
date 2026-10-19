@@ -2,7 +2,7 @@
 # nothing is installed globally.
 
 UV    := uv
-MODEL ?= yolo11n
+MODEL ?= yolo11s
 
 .PHONY: setup secrets test lint record replay zone-preview
 
