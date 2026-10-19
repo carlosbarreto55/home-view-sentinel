@@ -170,6 +170,60 @@ redacted, but the password was also shown in the development session, so the
 The same drop showed that FFmpeg readers on the gateway exit when go2rtc loses
 its source, which the frame reader's backoff already handles.
 
+## 2.4 YOLO on CoreML
+
+Date: 2026-10-18, at night (19:51–23:00 local). `yolo11n` and `yolo11s`
+exported by `make setup` to CoreML at 384x640 with NMS (versions in
+`models/README.md`). Channels 1 (garage and gate) and 2 (street) recorded
+through go2rtc, main stream and substream, in 10-minute clips; both models run
+on the same frames at 1 fps with `scripts/spike-models.py`, which decodes like
+the detector (1280x720), applies the rider rule, prints per clip the latency
+and how many frames had each class, the seconds with a motorcycle, and saves
+frames with both models' boxes drawn.
+
+Result: **`yolo11s` on the main stream.** Daytime frames were not checked yet;
+that is folded into zone calibration (task 6.6), which looks at both.
+
+| | yolo11n | yolo11s |
+| --- | --- | --- |
+| Latency per frame, main (median / p95) | 2.2 / 2.7 ms | 2.7 / 3.3 ms |
+| Latency per frame, substream | 1.6 / 2.0 ms | 2.4 / 3.0 ms |
+| Parked garage cars found (channel 1, 602 frames) | 314 | 602 |
+| Delivery motorcycle found while stopped (channel 1 main) | 96 of 98 frames | 102 of 102 frames |
+| ...with the courier counted as rider (standing next to it) | 22 | 50 |
+| Far car across the street (channel 2, earlier sample) | missed | found |
+
+- Both models are fast enough: at 5 fps per camera, under 2% of the time.
+- `yolo11n` flickers on objects that do not move (the parked garage cars come
+  and go every few frames), which would break tracks and restart dwell timers.
+  `yolo11s` is steady on them and finds small, far vehicles that `yolo11n`
+  misses.
+- A real delivery was caught (20:14:54 to about 20:18): a motorcycle with a
+  delivery box came up the street on channel 2 and stopped at the curb in front
+  of the garage on channel 1, the courier got off and stood next to it. Both
+  models saw the motorcycle in every frame of the stop on both streams; with a
+  30 s threshold the alert would have gone out at about 20:15:25. The push it
+  would have produced was sent to the iPhone with the real frame and arrived
+  with the picture.
+- Every other motorcycle in that hour drove past without stopping; none stayed
+  in view for more than a few seconds.
+- The rider rule needs a person sitting on the motorcycle. A courier standing
+  beside it is attached only about half the time with `yolo11s`, so the push is
+  usually "Moto parada…" (default priority) rather than "Moto com piloto…".
+  That matches the spec; whether a person next to the motorcycle should count
+  is an open question for design.md.
+- The substream (352x240) finds the motorcycle at the curb as well as the main
+  stream does, but far objects are a few pixels wide and lost. The main stream
+  costs about 9% of a core to decode (2.3), so it is worth it.
+- The parked garage cars are always detected, so zones must not include the
+  garage (calibration, 6.6).
+- The DVR dropped the gateway's connections several times (20:06:57,
+  20:16:32, 20:17:57, 21:27, 22:15); the substream sometimes kept going while
+  the main stream reconnected, and a reconnect can happen in the middle of a
+  stop. The detector discards a camera's tracks on reconnect (frame reader),
+  so a stop that spans a reconnect restarts its timer; with drops this rare
+  that only delays an alert.
+
 ## 2.5 ntfy on the iPhone over Tailscale
 
 Date: 2026-10-18, about 20:10 local. ntfy 2.14.0 in a container
