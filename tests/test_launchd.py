@@ -63,9 +63,13 @@ def test_agents_hold_no_secrets():
 
 
 class FakeLaunchctl:
-    def __init__(self, loaded=()):
+    """Like launchctl: ``bootout`` returns while the job is still listed for a moment."""
+
+    def __init__(self, loaded=(), lingering_prints=2):
         self.loaded = set(loaded)
         self.calls = []
+        self.lingering = {}
+        self.lingering_prints = lingering_prints
 
     def __call__(self, command):
         self.calls.append(command[1:])
@@ -73,17 +77,24 @@ class FakeLaunchctl:
         name = target.rsplit("/", 1)[-1].removesuffix(".plist")
         code = 0
         if verb == "print":
-            code = 0 if name in self.loaded else 113
+            if self.lingering.get(name):
+                self.lingering[name] -= 1
+                code = 0
+            else:
+                code = 0 if name in self.loaded else 113
         elif verb == "bootstrap":
             self.loaded.add(name)
         elif verb == "bootout":
             self.loaded.discard(name)
+            self.lingering[name] = self.lingering_prints
         return subprocess.CompletedProcess(command, code, "", "")
 
 
 def test_install_writes_the_agents_and_reloads_running_ones_in_order(tmp_path):
     launchctl = FakeLaunchctl(loaded={"com.carloseduardo.homeview-sentinel.detector"})
-    launchd.install(REPO, run=launchctl, directory=tmp_path, say=lambda _: None)
+    launchd.install(
+        REPO, run=launchctl, directory=tmp_path, say=lambda _: None, sleep=lambda s: None
+    )
     written = sorted(p.name for p in tmp_path.glob("*.plist"))
     assert written == sorted(f"{label}.plist" for label in rendered())
     verbs = [(c[0], c[-1].rsplit("/", 1)[-1]) for c in launchctl.calls if c[0] != "print"]
@@ -103,6 +114,6 @@ def test_install_writes_the_agents_and_reloads_running_ones_in_order(tmp_path):
 def test_stop_unloads_and_keeps_the_agent_off_at_login():
     launchctl = FakeLaunchctl(loaded={"com.carloseduardo.homeview-sentinel.gateway"})
     gateway = next(c for c in launchd.COMPONENTS if c.name == "gateway")
-    launchd.stop(gateway, run=launchctl)
+    launchd.stop(gateway, run=launchctl, sleep=lambda s: None)
     assert [c[0] for c in launchctl.calls if c[0] != "print"] == ["bootout", "disable"]
     assert not launchctl.loaded

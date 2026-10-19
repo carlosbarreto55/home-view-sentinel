@@ -21,6 +21,7 @@ import os
 import plistlib
 import shutil
 import subprocess
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -132,12 +133,29 @@ def start(component: Component, run: Runner = _run, directory: Path | None = Non
             raise RuntimeError(f"could not load {label(component)}: {result.stderr.strip()}")
 
 
-def stop(component: Component, run: Runner = _run) -> None:
-    """Unload the agent (launchd sends SIGTERM) and keep it off at future logins."""
-    target = f"{domain()}/{label(component)}"
-    if loaded(component, run):
-        run(["launchctl", "bootout", target])
-    run(["launchctl", "disable", target])
+def unload(
+    component: Component,
+    run: Runner = _run,
+    timeout: float = EXIT_TIMEOUT_SECONDS + 5,
+    sleep: Callable[[float], None] = time.sleep,
+) -> bool:
+    """Unload the agent (launchd sends SIGTERM) and wait until it is gone:
+    ``bootout`` returns while the job is still exiting."""
+    if not loaded(component, run):
+        return True
+    run(["launchctl", "bootout", f"{domain()}/{label(component)}"])
+    deadline = time.monotonic() + timeout
+    while loaded(component, run):
+        if time.monotonic() >= deadline:
+            return False
+        sleep(0.2)
+    return True
+
+
+def stop(component: Component, run: Runner = _run, sleep: Callable[[float], None] = time.sleep):
+    """Unload the agent and keep it off at future logins."""
+    unload(component, run, sleep=sleep)
+    run(["launchctl", "disable", f"{domain()}/{label(component)}"])
 
 
 def install(
@@ -145,6 +163,7 @@ def install(
     run: Runner = _run,
     directory: Path | None = None,
     say: Callable[[str], None] = print,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> None:
     """Write every agent and (re)load it, so the new definitions take effect."""
     python = repository / ".venv" / "bin" / "python"
@@ -155,8 +174,8 @@ def install(
     directory.mkdir(parents=True, exist_ok=True)
     rendered = render(repository, python, container_bin, logs)
     for component in reversed(COMPONENTS):
-        if loaded(component, run):
-            run(["launchctl", "bootout", f"{domain()}/{label(component)}"])
+        if not unload(component, run, sleep=sleep):
+            raise RuntimeError(f"{label(component)} did not stop")
     for component in COMPONENTS:
         plist_path(component, directory).write_bytes(rendered[label(component)])
     for component in COMPONENTS:
