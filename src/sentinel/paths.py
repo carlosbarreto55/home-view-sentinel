@@ -36,3 +36,8 @@ def gateway_stop_marker() -> Path:
     """Present after the DVR rejected the login: the gateway stays stopped (no
     second failed login) until ``make secrets`` stores a new password."""
     return gateway_dir() / "stopped-wrong-login"
+
+
+def broker_dir() -> Path:
+    """Mosquitto's rendered configuration (``config/``) and persistence (``data/``)."""
+    return data_dir() / "broker"
