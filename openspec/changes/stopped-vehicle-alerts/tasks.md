@@ -51,7 +51,7 @@ Findings from each spike subtask are written to `docs/spike-notes.md` in the sam
 - [x] 7.1 ntfy server container (`containers/ntfy/`): `upstream-base-url`, `base-url` at the Tailscale name, `deny-all`, phone user with read access and notifier token with write access created from the Keychain at start, attachment cache in Application Support — commit: `feat(notify): add self-hosted ntfy server container`
 - [x] 7.2 Message rules and pt-BR text (titles by class and rider, body with camera, zone, duration with gender agreement and local time, priorities, end messages off by default, quiet hours lowering priority); tests for every case in the phone-notifications spec — commit: `feat(notify): build alert messages in Portuguese`
 - [x] 7.3 ntfy client (PUT with snapshot body and headers, token auth, 3 retries over 1 minute); tests against a fake HTTP server — commit: `feat(notify): send pushes with snapshots through ntfy`
-- [ ] 7.4 Notifier service and container: persistent subscription to events and status, offline alert after 2 minutes and back-online message, camera without picture for 10 minutes, its own status and Last Will; tests for the offline timing rules with an injected clock — commit: `feat(notify): add notifier service`
+- [x] 7.4 Notifier service and container: persistent subscription to events and status, offline alert after 2 minutes and back-online message, camera without picture for 10 minutes, its own status and Last Will; tests for the offline timing rules with an injected clock — commit: `feat(notify): add notifier service`
 
 ## 8. Runtime
 
