@@ -76,6 +76,7 @@ def agent(
         "PATH": SEARCH_PATH,
         "PYTHONUNBUFFERED": "1",
         "SENTINEL_CONTAINER_BIN": container_bin,
+        "SENTINEL_LOG_FILE": "1",  # log to <component>.log, rotated daily
     }
     log_file = str(logs / f"{component.name}.launchd.log")
     plist: dict = {
@@ -131,6 +132,10 @@ def start(component: Component, run: Runner = _run, directory: Path | None = Non
         result = run(["launchctl", "bootstrap", domain(), str(plist_path(component, directory))])
         if result.returncode != 0 and not loaded(component, run):
             raise RuntimeError(f"could not load {label(component)}: {result.stderr.strip()}")
+
+
+def enable(component: Component, run: Runner = _run) -> None:
+    run(["launchctl", "enable", f"{domain()}/{label(component)}"])
 
 
 def unload(

@@ -58,6 +58,7 @@ def test_agents_hold_no_secrets():
             "PATH",
             "PYTHONUNBUFFERED",
             "SENTINEL_CONTAINER_BIN",
+            "SENTINEL_LOG_FILE",
         }
         assert "/opt/homebrew/bin" in plist["EnvironmentVariables"]["PATH"]
 

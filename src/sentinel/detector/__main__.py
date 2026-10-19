@@ -23,7 +23,7 @@ from sentinel.detector.frames import FrameReader
 from sentinel.detector.inference import CoreMLBackend, model_path
 from sentinel.detector.pipeline import Detector
 from sentinel.gateway.go2rtc import local_url
-from sentinel.runtime import EXIT_DONE
+from sentinel.runtime import EXIT_DONE, logs
 
 log = logging.getLogger("sentinel.detector")
 
@@ -42,9 +42,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="sentinel.detector")
     parser.add_argument("--config", type=Path, default=config_module.DEFAULT_PATH)
     args = parser.parse_args(argv)
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
-    )
+    redacting = logs.setup("detector")
 
     try:
         config = config_module.load(args.config)
@@ -54,6 +52,7 @@ def main(argv: list[str] | None = None) -> int:
         # Stays stopped (launchd restarts only failed exits) until the user fixes it.
         log.error("%s", error)
         return EXIT_DONE
+    redacting.add(password)
 
     publisher = bus.BusClient("detector", "detector", password)
     detector = Detector(

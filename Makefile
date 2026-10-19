@@ -4,7 +4,7 @@
 UV    := uv
 MODEL ?= yolo11s
 
-.PHONY: setup secrets install test lint record replay zone-preview
+.PHONY: setup secrets install up down status logs uninstall test lint record replay zone-preview
 
 # Installs the dependencies and exports the detection model to CoreML. The
 # export needs PyTorch, which is removed again afterwards (the final sync).
@@ -43,3 +43,22 @@ lint:
 # and serves ntfy on the tailnet with Tailscale Serve.
 install:
 	$(UV) run python -m sentinel.runtime install
+
+# Start or stop every component; `down` also keeps them off at the next login.
+up:
+	$(UV) run python -m sentinel.runtime up
+
+down:
+	$(UV) run python -m sentinel.runtime down
+
+# Each component's launchd state, MQTT status, uptime, CPU and memory.
+status:
+	$(UV) run python -m sentinel.runtime status
+
+# Follow every component's log (rotated daily, 7 days kept).
+logs:
+	tail -n 20 -F "$(HOME)/Library/Logs/HomeView Sentinel/"*.log
+
+# Stop everything and remove the launchd agents (data and logs are kept).
+uninstall:
+	$(UV) run python -m sentinel.runtime uninstall

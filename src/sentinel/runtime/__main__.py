@@ -1,4 +1,4 @@
-"""``python -m sentinel.runtime install``: what ``make install`` runs."""
+"""``python -m sentinel.runtime install|up|down|status|uninstall``: the ``make`` targets."""
 
 from __future__ import annotations
 
@@ -6,15 +6,17 @@ import argparse
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from sentinel import config as config_module
-from sentinel import secrets
+from sentinel import paths, secrets
 from sentinel.detector.inference import model_path
 from sentinel.notifier import ntfy_server
-from sentinel.runtime import launchd
+from sentinel.runtime import container, launchd, status
 
 REPOSITORY = Path(__file__).resolve().parents[3]
+DOWN_TIMEOUT = 10.0
 
 
 def problems(repository: Path) -> list[str]:
@@ -81,14 +83,100 @@ def install() -> int:
     return 0
 
 
+def installed() -> bool:
+    return all(launchd.plist_path(c).exists() for c in launchd.COMPONENTS)
+
+
+def up() -> int:
+    if not installed():
+        print("The launchd agents are not installed: run `make install`.")
+        return 1
+    if paths.gateway_stop_marker().exists():
+        print(
+            "Note: the DVR rejected the last login, so the gateway stays stopped. "
+            "Run `make secrets` with the right password first."
+        )
+    for component in launchd.COMPONENTS:
+        launchd.start(component)
+        print(f"  started {component.name:<17} {component.description}")
+    return 0
+
+
+def down(timeout: float = DOWN_TIMEOUT) -> int:
+    """Stop every component, also at future logins, and check nothing is left."""
+    for component in reversed(launchd.COMPONENTS):
+        launchd.stop(component)
+    deadline = time.monotonic() + timeout
+    left: list[str] = []
+    while time.monotonic() < deadline:
+        left = leftovers()
+        if not left:
+            break
+        time.sleep(0.5)
+    if left:
+        print(f"Still running after {timeout:g} s: {', '.join(left)}")
+        return 1
+    print("Stopped: no Sentinel process or container is running (none at login either).")
+    return 0
+
+
+def leftovers() -> list[str]:
+    """Sentinel processes or containers still running."""
+    found = [
+        component.name
+        for component in launchd.COMPONENTS
+        if component.module and _pids(f"python.* -m {component.module}$")
+    ]
+    result = subprocess.run(
+        [container.CONTAINER, "list", "--quiet"], capture_output=True, text=True, check=False
+    )
+    found += [name for name in result.stdout.split() if name.startswith("sentinel-")]
+    return found
+
+
+def _pids(pattern: str) -> list[str]:
+    result = subprocess.run(["pgrep", "-f", pattern], capture_output=True, text=True, check=False)
+    return result.stdout.split()
+
+
+def uninstall() -> int:
+    code = down()
+    for component in launchd.COMPONENTS:
+        launchd.plist_path(component).unlink(missing_ok=True)
+        launchd.enable(component)  # do not leave a disabled entry behind
+    print(f"Removed the launchd agents from {launchd.agents_dir()}. Data and logs are kept.")
+    return code
+
+
+def show_status() -> int:
+    try:
+        cameras = [
+            c.id for c in config_module.load(REPOSITORY / config_module.DEFAULT_PATH).cameras
+        ]
+    except config_module.ConfigError:
+        cameras = []
+    for line in status.collect(cameras):
+        print(line)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="sentinel.runtime")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("install", help="install and start the launchd agents")
+    commands.add_parser("up", help="start every component (and at login)")
+    commands.add_parser("down", help="stop every component (and not at login)")
+    commands.add_parser("status", help="state, uptime and CPU of each component")
+    commands.add_parser("uninstall", help="stop and remove the launchd agents")
     args = parser.parse_args(argv)
-    if args.command == "install":
-        return install()
-    return 2
+    actions = {
+        "install": install,
+        "up": up,
+        "down": down,
+        "status": show_status,
+        "uninstall": uninstall,
+    }
+    return actions[args.command]()
 
 
 if __name__ == "__main__":
