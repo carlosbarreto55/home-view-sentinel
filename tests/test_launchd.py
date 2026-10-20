@@ -91,30 +91,75 @@ class FakeLaunchctl:
         return subprocess.CompletedProcess(command, code, "", "")
 
 
-def test_install_writes_the_agents_and_reloads_running_ones_in_order(tmp_path):
-    launchctl = FakeLaunchctl(loaded={"com.carloseduardo.homeview-sentinel.detector"})
-    launchd.install(
-        REPO, run=launchctl, directory=tmp_path, say=lambda _: None, sleep=lambda s: None
-    )
-    written = sorted(p.name for p in tmp_path.glob("*.plist"))
-    assert written == sorted(f"{label}.plist" for label in rendered())
-    verbs = [(c[0], c[-1].rsplit("/", 1)[-1]) for c in launchctl.calls if c[0] != "print"]
-    assert verbs[0] == ("bootout", "com.carloseduardo.homeview-sentinel.detector")
-    bootstrapped = [t.removesuffix(".plist") for v, t in verbs if v == "bootstrap"]
-    assert [b.rsplit(".", 1)[-1] for b in bootstrapped] == [
-        "container-system",
-        "broker",
-        "ntfy",
-        "gateway",
-        "notifier",
-        "detector",
+NAMES = ["container-system", "broker", "ntfy", "gateway", "notifier", "detector"]
+
+
+def names(launchctl, verb):
+    return [
+        c[-1].rsplit("/", 1)[-1].removesuffix(".plist").rsplit(".", 1)[-1]
+        for c in launchctl.calls
+        if c[0] == verb
     ]
+
+
+def test_component_plists_live_in_application_support(tmp_path, monkeypatch):
+    monkeypatch.setenv("SENTINEL_DATA_DIR", str(tmp_path))
+    detector = next(c for c in launchd.COMPONENTS if c.name == "detector")
+    assert launchd.plist_path(detector) == (
+        tmp_path / "launchd" / "com.carloseduardo.homeview-sentinel.detector.plist"
+    )
+    assert launchd.components_dir() != launchd.agents_dir()
+
+
+def test_install_writes_the_plists_and_removes_the_old_login_agents(tmp_path):
+    components, legacy = tmp_path / "launchd", tmp_path / "LaunchAgents"
+    legacy.mkdir()
+    for name in ("broker", "detector"):
+        (legacy / f"com.carloseduardo.homeview-sentinel.{name}.plist").write_bytes(b"old")
+    unrelated = legacy / "com.example.other.plist"
+    unrelated.write_bytes(b"keep")
+    launchctl = FakeLaunchctl(loaded={"com.carloseduardo.homeview-sentinel.detector"})
+    removed = launchd.install(
+        REPO, run=launchctl, directory=components, legacy_directory=legacy, sleep=lambda s: None
+    )
+    assert removed == ["broker", "detector"]
+    assert sorted(p.name for p in components.glob("*.plist")) == sorted(
+        f"{label}.plist" for label in rendered()
+    )
+    assert [p.name for p in legacy.iterdir()] == [unrelated.name]
+    # The running detector is unloaded so the new definition takes effect; nothing starts.
+    assert names(launchctl, "bootout") == ["detector"]
+    assert names(launchctl, "bootstrap") == []
+    assert not launchctl.loaded
+    # A component disabled by an older `make down` is enabled again.
+    assert names(launchctl, "enable") == NAMES
+
+
+def test_start_components_loads_them_in_order_from_application_support(tmp_path):
+    launchctl = FakeLaunchctl(loaded={"com.carloseduardo.homeview-sentinel.broker"})
+    launchd.start_components(run=launchctl, directory=tmp_path)
+    bootstrapped = [c[-1] for c in launchctl.calls if c[0] == "bootstrap"]
+    assert all(path.startswith(str(tmp_path)) for path in bootstrapped)
+    assert names(launchctl, "bootstrap") == [n for n in NAMES if n != "broker"]
     assert len(launchctl.loaded) == 6
 
 
-def test_stop_unloads_and_keeps_the_agent_off_at_login():
-    launchctl = FakeLaunchctl(loaded={"com.carloseduardo.homeview-sentinel.gateway"})
-    gateway = next(c for c in launchd.COMPONENTS if c.name == "gateway")
-    launchd.stop(gateway, run=launchctl, sleep=lambda s: None)
-    assert [c[0] for c in launchctl.calls if c[0] != "print"] == ["bootout", "disable"]
+def test_stop_components_unloads_in_reverse_waiting_for_each():
+    launchctl = FakeLaunchctl(loaded={f"com.carloseduardo.homeview-sentinel.{n}" for n in NAMES})
+    assert launchd.stop_components(run=launchctl, sleep=lambda s: None) == []
+    assert names(launchctl, "bootout") == list(reversed(NAMES))
     assert not launchctl.loaded
+    # Each bootout is followed by prints until the job is gone, before the next bootout.
+    verbs = [c[0] for c in launchctl.calls]
+    first, second = [i for i, v in enumerate(verbs) if v == "bootout"][:2]
+    assert verbs[first + 1 : second].count("print") >= launchctl.lingering_prints + 1
+    assert "disable" not in verbs
+
+
+def test_stop_components_reports_one_that_does_not_go(monkeypatch):
+    launchctl = FakeLaunchctl(
+        loaded={"com.carloseduardo.homeview-sentinel.gateway"}, lingering_prints=10**9
+    )
+    times = iter(range(0, 10**6, 5))
+    monkeypatch.setattr(launchd.time, "monotonic", lambda: next(times))
+    assert launchd.stop_components(run=launchctl, sleep=lambda s: None) == ["gateway"]

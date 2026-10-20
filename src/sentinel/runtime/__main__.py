@@ -75,14 +75,16 @@ def install() -> int:
         for problem in found:
             print(f"  - {problem}")
         return 1
-    print(f"Installing the launchd agents in {launchd.agents_dir()}:")
-    launchd.install(REPOSITORY)
+    removed = launchd.install(REPOSITORY)
+    if removed:
+        print(f"Removed the old login agents from {launchd.agents_dir()}: {', '.join(removed)}")
+    print(f"Wrote the component agents to {launchd.components_dir()}.")
     print(tailscale_serve())
     settings = config_module.load(REPOSITORY / config_module.DEFAULT_PATH).notifications
     print(
         f"\niPhone: in the ntfy app, add the server {settings.ntfy_base_url} with user "
         f"{secrets.NTFY_PHONE_USER} (password from `make secrets`) and subscribe to "
-        f"{settings.ntfy_topic!r}. `make status` shows each component."
+        f"{settings.ntfy_topic!r}. `make up` starts watching, `make status` shows each component."
     )
     return 0
 
@@ -100,16 +102,13 @@ def up() -> int:
             "Note: the DVR rejected the last login, so the gateway stays stopped. "
             "Run `make secrets` with the right password first."
         )
-    for component in launchd.COMPONENTS:
-        launchd.start(component)
-        print(f"  started {component.name:<17} {component.description}")
+    launchd.start_components(say=print)
     return 0
 
 
 def down(timeout: float = DOWN_TIMEOUT) -> int:
-    """Stop every component, also at future logins, and check nothing is left."""
-    for component in reversed(launchd.COMPONENTS):
-        launchd.stop(component)
+    """Stop every component and check nothing is left."""
+    launchd.stop_components()
     deadline = time.monotonic() + timeout
     left: list[str] = []
     while time.monotonic() < deadline:
@@ -120,7 +119,7 @@ def down(timeout: float = DOWN_TIMEOUT) -> int:
     if left:
         print(f"Still running after {timeout:g} s: {', '.join(left)}")
         return 1
-    print("Stopped: no Sentinel process or container is running (none at login either).")
+    print("Stopped: no Sentinel process or container is running.")
     return 0
 
 
@@ -147,8 +146,8 @@ def uninstall() -> int:
     code = down()
     for component in launchd.COMPONENTS:
         launchd.plist_path(component).unlink(missing_ok=True)
-        launchd.enable(component)  # do not leave a disabled entry behind
-    print(f"Removed the launchd agents from {launchd.agents_dir()}. Data and logs are kept.")
+    launchd.remove_legacy()
+    print(f"Removed the launchd agents from {launchd.components_dir()}. Data and logs are kept.")
     return code
 
 
@@ -167,9 +166,9 @@ def show_status() -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="sentinel.runtime")
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("install", help="install and start the launchd agents")
-    commands.add_parser("up", help="start every component (and at login)")
-    commands.add_parser("down", help="stop every component (and not at login)")
+    commands.add_parser("install", help="write the launchd agents")
+    commands.add_parser("up", help="start every component")
+    commands.add_parser("down", help="stop every component")
     commands.add_parser("status", help="state, uptime and CPU of each component")
     commands.add_parser("uninstall", help="stop and remove the launchd agents")
     args = parser.parse_args(argv)

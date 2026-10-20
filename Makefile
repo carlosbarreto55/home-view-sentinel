@@ -39,12 +39,13 @@ lint:
 	$(UV) run ruff check src tests
 	$(UV) run ruff format --check src tests
 
-# Installs the launchd agents (every component starts now and at each login),
-# and serves ntfy on the tailnet with Tailscale Serve.
+# Writes the component launchd agents to Application Support (loaded only on
+# demand, never at login by themselves), and serves ntfy on the tailnet with
+# Tailscale Serve.
 install:
 	$(UV) run python -m sentinel.runtime install
 
-# Start or stop every component; `down` also keeps them off at the next login.
+# Start or stop every component.
 up:
 	$(UV) run python -m sentinel.runtime up
 

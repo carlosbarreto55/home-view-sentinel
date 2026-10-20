@@ -1,18 +1,20 @@
 """launchd agents for every component, and ``make install``.
 
-One agent per component, ``com.carloseduardo.homeview-sentinel.<component>``,
-in ``~/Library/LaunchAgents``:
+One agent per component, ``com.carloseduardo.homeview-sentinel.<component>``:
 
-- ``container-system`` runs ``container system start`` once at login (its
-  services are transient and do not survive a logout or reboot);
+- ``container-system`` runs ``container system start`` once when loaded;
 - ``broker``, ``ntfy`` and ``gateway`` run their container launchers;
 - ``notifier`` and ``detector`` run natively.
 
-The Python components start at login (``RunAtLoad``) and are restarted 10 s
-after a failed exit (``KeepAlive`` with ``SuccessfulExit = false``). A component
-that exits cleanly (stopped on purpose, invalid configuration, missing secrets,
-a rejected DVR login) stays stopped until the user acts. Each reads its own
-secrets from the Keychain at start; the agents hold no secrets.
+The component plists live in Sentinel's Application Support folder
+(``launchd/``), not in ``~/Library/LaunchAgents``, so launchd never loads them
+at login by itself: they are loaded on demand, in order, with ``launchctl
+bootstrap`` when watching starts and unloaded in reverse with ``bootout`` when
+it stops. While loaded, a component is restarted 10 s after a failed exit
+(``KeepAlive`` with ``SuccessfulExit = false``); one that exits cleanly (stopped
+on purpose, invalid configuration, missing secrets, a rejected DVR login) stays
+stopped. Each reads its own secrets from the Keychain at start; the agents hold
+no secrets.
 """
 
 from __future__ import annotations
@@ -57,11 +59,17 @@ def label(component: Component) -> str:
 
 
 def agents_dir() -> Path:
+    """Where launchd looks at login."""
     return Path.home() / "Library" / "LaunchAgents"
 
 
+def components_dir() -> Path:
+    """The component plists, loaded only on demand."""
+    return paths.data_dir() / "launchd"
+
+
 def plist_path(component: Component, directory: Path | None = None) -> Path:
-    return (directory or agents_dir()) / f"{label(component)}.plist"
+    return (directory or components_dir()) / f"{label(component)}.plist"
 
 
 def agent(
@@ -125,9 +133,9 @@ def loaded(component: Component, run: Runner = _run) -> bool:
 
 
 def start(component: Component, run: Runner = _run, directory: Path | None = None) -> None:
-    """Enable the agent (also at future logins) and load it, which starts it."""
-    target = f"{domain()}/{label(component)}"
-    run(["launchctl", "enable", target])
+    """Load the agent, which starts it. ``enable`` first clears a ``disable``
+    left by an older ``make down``, which would make ``bootstrap`` fail."""
+    run(["launchctl", "enable", f"{domain()}/{label(component)}"])
     if not loaded(component, run):
         result = run(["launchctl", "bootstrap", domain(), str(plist_path(component, directory))])
         if result.returncode != 0 and not loaded(component, run):
@@ -157,32 +165,57 @@ def unload(
     return True
 
 
-def stop(component: Component, run: Runner = _run, sleep: Callable[[float], None] = time.sleep):
-    """Unload the agent and keep it off at future logins."""
-    unload(component, run, sleep=sleep)
-    run(["launchctl", "disable", f"{domain()}/{label(component)}"])
+def start_components(
+    run: Runner = _run,
+    directory: Path | None = None,
+    say: Callable[[str], None] = lambda _: None,
+) -> None:
+    """Load every component in start order (the broker and ntfy before their clients)."""
+    for component in COMPONENTS:
+        start(component, run, directory)
+        say(f"  started {component.name:<17} {component.description}")
+
+
+def stop_components(run: Runner = _run, sleep: Callable[[float], None] = time.sleep) -> list[str]:
+    """Unload every component in reverse order, each gone before the next;
+    returns the ones that did not stop."""
+    return [c.name for c in reversed(COMPONENTS) if not unload(c, run, sleep=sleep)]
+
+
+def remove_legacy(run: Runner = _run, directory: Path | None = None) -> list[str]:
+    """Delete the component agents that older versions installed in
+    ``~/Library/LaunchAgents`` (where they started at every login)."""
+    removed = []
+    for component in COMPONENTS:
+        path = plist_path(component, directory or agents_dir())
+        if path.exists():
+            path.unlink()
+            removed.append(component.name)
+        enable(component, run)  # do not leave a disabled entry behind
+    return removed
 
 
 def install(
     repository: Path,
     run: Runner = _run,
     directory: Path | None = None,
-    say: Callable[[str], None] = print,
+    legacy_directory: Path | None = None,
     sleep: Callable[[float], None] = time.sleep,
-) -> None:
-    """Write every agent and (re)load it, so the new definitions take effect."""
+) -> list[str]:
+    """Unload every component, remove the old login agents and write the
+    component plists, so the new definitions take effect at the next start.
+    Returns the old agents removed."""
     python = repository / ".venv" / "bin" / "python"
     container_bin = shutil.which("container", path=SEARCH_PATH) or "/opt/homebrew/bin/container"
     logs = paths.logs_dir()
     logs.mkdir(parents=True, exist_ok=True)
-    directory = directory or agents_dir()
+    directory = directory or components_dir()
     directory.mkdir(parents=True, exist_ok=True)
     rendered = render(repository, python, container_bin, logs)
-    for component in reversed(COMPONENTS):
-        if not unload(component, run, sleep=sleep):
-            raise RuntimeError(f"{label(component)} did not stop")
+    left = stop_components(run, sleep)
+    if left:
+        raise RuntimeError(f"{', '.join(left)} did not stop")
+    removed = remove_legacy(run, legacy_directory)
     for component in COMPONENTS:
         plist_path(component, directory).write_bytes(rendered[label(component)])
-    for component in COMPONENTS:
-        start(component, run, directory)
-        say(f"  started {component.name:<17} {component.description}")
+    return removed
