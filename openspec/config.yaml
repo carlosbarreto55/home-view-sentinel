@@ -28,7 +28,9 @@ context: |
     Tailscale.
 
   Reference project: ../home-view (HomeView, the user's Swift menu bar camera viewer).
-  Read it for verified DVR facts and conventions; NEVER modify it.
+  Read it for verified DVR facts and conventions. Change it only through its own
+  OpenSpec changes in that project (e.g. show-sentinel-status), never as part of a
+  Sentinel change.
 
   Domain (verified against the real device in HomeView):
   - DVR: 8 channels, on the LAN at

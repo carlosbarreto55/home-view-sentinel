@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import shutil
 import subprocess
 import sys
 import time
@@ -48,8 +47,13 @@ def problems(repository: Path) -> list[str]:
 def tailscale_serve() -> str:
     """Serve ntfy over HTTPS on the tailnet. The Tailscale Mac app's CLI only
     works from a terminal, so this runs here, in the foreground, not in an agent."""
-    cli = shutil.which("tailscale") or "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
-    command = [cli, "serve", "--bg", "--https=443", f"http://127.0.0.1:{ntfy_server.PORT}"]
+    command = [
+        status.tailscale_cli(),
+        "serve",
+        "--bg",
+        "--https=443",
+        f"http://127.0.0.1:{ntfy_server.PORT}",
+    ]
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=60, check=False)
     except (OSError, subprocess.TimeoutExpired) as error:
@@ -150,12 +154,12 @@ def uninstall() -> int:
 
 def show_status() -> int:
     try:
-        cameras = [
-            c.id for c in config_module.load(REPOSITORY / config_module.DEFAULT_PATH).cameras
-        ]
+        config = config_module.load(REPOSITORY / config_module.DEFAULT_PATH)
+        cameras = [c.id for c in config.cameras]
+        ntfy_base_url = config.notifications.ntfy_base_url
     except config_module.ConfigError:
-        cameras = []
-    for line in status.collect(cameras):
+        cameras, ntfy_base_url = [], None
+    for line in status.collect(cameras, ntfy_base_url):
         print(line)
     return 0
 
