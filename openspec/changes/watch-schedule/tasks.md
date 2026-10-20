@@ -19,7 +19,7 @@ Each subtask is exactly one commit, using Conventional Commits with the message 
 
 ## 4. Snapshot time
 
-- [ ] 4.1 Print the event's local date and time on snapshots, top right over the DVR's clock (box size checked on both street cameras' frames); test that the text and box are drawn — commit: `feat(dwell): print the Mac's local time on snapshots`
+- [x] 4.1 Print the event's local date and time on snapshots, top right over the DVR's clock (box size checked on both street cameras' frames); test that the text and box are drawn — commit: `feat(dwell): print the Mac's local time on snapshots`
 
 ## 5. Verification
 

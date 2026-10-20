@@ -69,3 +69,48 @@ def test_delete_old_uses_the_file_time_for_other_names(tmp_path):
 
 def test_delete_old_without_folder(tmp_path):
     assert snapshots.delete_old(tmp_path / "missing", 14, MOMENT) == []
+
+
+def test_stamp_text_is_the_local_date_and_time():
+    moment = datetime(2026, 10, 19, 0, 15, 24, tzinfo=UTC)
+    assert snapshots.stamp_text(moment, "Etc/GMT+4") == "18/10/2026 20:15:24"
+
+
+def test_the_stamp_box_covers_the_dvr_clock():
+    x1, y1, x2, y2 = snapshots.stamp_box("18/10/2026 20:15:24")
+    cx1, cy1, cx2, cy2 = snapshots.DVR_CLOCK
+    assert x1 < cx1 and y1 < cy1 and x2 > cx2 and y2 > cy2
+    assert x2 <= 1280 and y1 >= 0
+    assert x1 > 640  # the right half only: the street is not there
+
+
+def test_the_stamp_is_drawn_white_on_a_dark_box():
+    canvas = np.full((720, 1280, 3), 230, dtype=np.uint8)  # a bright sky
+    x1, y1, x2, y2 = snapshots.draw_stamp(canvas, "18/10/2026 20:15:24")
+    inside = canvas[y1 : y2 + 1, x1 : x2 + 1]
+    white = (inside.min(axis=2) > 200).sum()
+    dark = (inside.max(axis=2) < 60).sum()
+    assert white > 500 and dark > inside.shape[0] * inside.shape[1] * 0.6
+    cx1, cy1, cx2, cy2 = snapshots.DVR_CLOCK
+    clock = canvas[cy1:cy2, cx1:cx2]
+    assert (clock.max(axis=2) < 60).mean() > 0.5  # covered by the box (and our text)
+    assert (canvas[100:, :] == 230).all() and (canvas[:, : x1 - 1] == 230).all()
+
+
+def test_save_prints_the_time_when_given_a_timezone(tmp_path):
+    moment = datetime(2026, 10, 19, 0, 15, 24, tzinfo=UTC)
+    ref = snapshots.save(
+        tmp_path, "garagem", moment, "garagem-1", frame(), BOX, POLYGON, timezone="Etc/GMT+4"
+    )
+    image = cv2.imread(str(tmp_path / ref.file))
+    x1, y1, x2, y2 = snapshots.stamp_box("18/10/2026 20:15:24")
+    corner = image[y1 : y2 + 1, x1 : x2 + 1]
+    assert (corner.min(axis=2) > 200).sum() > 500  # the text
+    plain = snapshots.save(tmp_path, "rua", moment, "rua-1", frame(), BOX, POLYGON)
+    untouched = cv2.imread(str(tmp_path / plain.file))[y1 : y2 + 1, x1 : x2 + 1]
+    assert (untouched.min(axis=2) > 200).sum() == 0
+
+
+def test_the_stamp_scales_with_a_smaller_frame():
+    x1, y1, x2, y2 = snapshots.stamp_box("18/10/2026 20:15:24", width=640)
+    assert 320 < x1 < x2 <= 640 and y2 - y1 < 40

@@ -55,6 +55,7 @@ class CameraPipeline:
         self.camera = camera
         self.backend = backend
         self.snapshots_root = snapshots_root
+        self.timezone = config.notifications.timezone
         self.width, self.height = frame_size
         self.tracker = VehicleTracker(
             camera.id, config.sampling.fps, min_confidence=config.model.min_confidence
@@ -108,6 +109,7 @@ class CameraPipeline:
                 frame.image,
                 action.box,
                 action.zone.polygon,
+                timezone=self.timezone,
             )
             event = DwellEvent(
                 type=DWELL_STARTED,

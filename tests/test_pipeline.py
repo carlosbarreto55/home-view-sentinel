@@ -197,3 +197,16 @@ def test_old_snapshots_are_deleted_once_a_day(tmp_path):
     now["t"] = START + timedelta(hours=24)
     detector.step(timeout=0)
     assert not old.exists()
+
+
+def test_event_snapshots_show_the_local_time(tmp_path, monkeypatch):
+    from sentinel.detector import snapshots
+
+    stamps = []
+    draw = snapshots.draw
+    monkeypatch.setattr(snapshots, "draw", lambda *a, **k: stamps.append(a[3]) or draw(*a, **k))
+    c = cfg()
+    pipeline = CameraPipeline(c, c.camera("garagem"), FakeBackend(motorcyclist), tmp_path)
+    start = run(pipeline, range(350))[0]
+    assert stamps == [snapshots.stamp_text(start.occurred_at, c.notifications.timezone)]
+    assert stamps[0].startswith("18/10/2026 11:04:")  # 15:04 UTC at UTC-4
