@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://homeview-sentinel.local/contracts/control-state.v1.schema.json",
+  "title": "HomeView Sentinel control state, version 1",
+  "description": "Written by the control agent to ~/Library/Application Support/HomeView Sentinel/control/state.json (temporary file and rename, mode 0600) on every change and at least every 5 seconds. A written_at older than 15 seconds means the agent is not running. Times are UTC; clients show them in local time. Holds no credentials.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "written_at",
+    "mode",
+    "until",
+    "phase",
+    "detail",
+    "power",
+    "kept_awake",
+    "cameras",
+    "durations_hours",
+    "applied_request",
+    "refused_request",
+    "last_alert"
+  ],
+  "properties": {
+    "schema": {"const": "sentinel.control-state/v1"},
+    "written_at": {"$ref": "#/$defs/utc_time"},
+    "mode": {"enum": ["off", "always", "timed"], "description": "off, 24/7 (always), or a timed watch until `until`."},
+    "until": {
+      "description": "End of a timed watch; null for off and always.",
+      "oneOf": [{"$ref": "#/$defs/utc_time"}, {"type": "null"}]
+    },
+    "phase": {
+      "enum": ["stopped", "starting", "watching", "stopping", "problem"],
+      "description": "What the components are doing: starting from a request until the detector and every camera are online (or 2 minutes), stopping until every component is unloaded."
+    },
+    "detail": {
+      "description": "In Portuguese: the problem when phase is problem, otherwise why the last request was refused, or null.",
+      "type": ["string", "null"]
+    },
+    "power": {"enum": ["ac", "battery"], "description": "The Mac's power source. On battery the Mac may sleep while watching."},
+    "kept_awake": {"type": "boolean", "description": "Whether the Mac is being kept from idle sleep (watching on power adapter)."},
+    "cameras": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "channel", "state"],
+        "properties": {
+          "id": {"$ref": "#/$defs/identifier"},
+          "name": {"type": "string", "minLength": 1},
+          "channel": {"$ref": "#/$defs/channel"},
+          "state": {"enum": ["online", "reconnecting", "offline"]}
+        }
+      }
+    },
+    "durations_hours": {
+      "description": "The timed watch durations the agent accepts, for clients to offer.",
+      "type": "array",
+      "items": {"type": "integer", "minimum": 1}
+    },
+    "applied_request": {"description": "Id of the last request applied.", "type": ["string", "null"]},
+    "refused_request": {
+      "description": "Id of the last request refused (\"unknown\" when it had no readable id); `detail` says why.",
+      "type": ["string", "null"]
+    },
+    "last_alert": {
+      "description": "The most recent dwell.started, as the phone showed it; null when there is none or its snapshot was deleted.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["event_id", "title", "message", "occurred_at", "camera", "zone", "snapshot"],
+          "properties": {
+            "event_id": {"type": "string", "minLength": 1},
+            "title": {"type": "string", "minLength": 1},
+            "message": {"type": "string", "minLength": 1},
+            "occurred_at": {"$ref": "#/$defs/utc_time"},
+            "camera": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "name", "channel"],
+              "properties": {
+                "id": {"$ref": "#/$defs/identifier"},
+                "name": {"type": "string", "minLength": 1},
+                "channel": {"$ref": "#/$defs/channel"}
+              }
+            },
+            "zone": {"type": "string", "minLength": 1, "description": "The zone's name."},
+            "snapshot": {"type": "string", "pattern": "^/.+\\.jpg$", "description": "Absolute path of the snapshot."}
+          }
+        },
+        {"type": "null"}
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"mode": {"const": "timed"}}},
+      "then": {"properties": {"until": {"$ref": "#/$defs/utc_time"}}},
+      "else": {"properties": {"until": {"type": "null"}}}
+    }
+  ],
+  "$defs": {
+    "utc_time": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+    "identifier": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+    "channel": {"type": "integer", "minimum": 1, "maximum": 8}
+  }
+}

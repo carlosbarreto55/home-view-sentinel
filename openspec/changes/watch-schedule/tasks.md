@@ -2,7 +2,7 @@ Each subtask is exactly one commit, using Conventional Commits with the message 
 
 ## 1. Contract
 
-- [ ] 1.1 `contracts/control-state.v1.schema.json` and `contracts/control-request.v1.schema.json`, Python models that serialize to them, and tests that the design's examples validate and that requests with other durations or bad JSON are rejected — commit: `feat(control): define the control state and request contract`
+- [x] 1.1 `contracts/control-state.v1.schema.json` and `contracts/control-request.v1.schema.json`, Python models that serialize to them, and tests that the design's examples validate and that requests with other durations or bad JSON are rejected — commit: `feat(control): define the control state and request contract`
 
 ## 2. Control agent
 
