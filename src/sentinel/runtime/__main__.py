@@ -1,4 +1,8 @@
-"""``python -m sentinel.runtime install|up|down|status|uninstall``: the ``make`` targets."""
+"""``python -m sentinel.runtime install|up|watch|down|status|uninstall``: the ``make`` targets.
+
+``up``, ``watch`` and ``down`` are requests to the control agent, which owns the
+mode; they wait for its answer and print the state.
+"""
 
 from __future__ import annotations
 
@@ -6,10 +10,13 @@ import argparse
 import subprocess
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sentinel import config as config_module
 from sentinel import paths, secrets
+from sentinel.control import client as control
+from sentinel.control.contract import ALWAYS, DURATIONS_HOURS, OFF, STOPPED, TIMED, ControlState
 from sentinel.detector.inference import model_path
 from sentinel.notifier import ntfy_server
 from sentinel.runtime import container, launchd, status
@@ -95,33 +102,61 @@ def installed() -> bool:
     return all(path.exists() for path in plists)
 
 
-def up() -> int:
+def ask(mode: str, hours: int | None = None) -> ControlState | None:
+    """Send a request to the control agent and wait for its answer; prints the
+    outcome. Returns the state when the request was applied."""
     if not installed():
-        print("The launchd agents are not installed: run `make install`.")
-        return 1
+        print("The control agent is not installed: run `make install`.")
+        return None
+    directory = paths.control_dir()
+    request = control.new_request(mode, hours)
+    control.send(directory, request)
+    state = control.wait_for(directory, request.id)
+    if state is None:
+        print(
+            f"The control agent did not answer in {control.ANSWER_TIMEOUT:g} s. "
+            "Is it running? `make status` shows it; `make install` starts it again."
+        )
+        return None
+    if not control.applied(state, request.id):
+        print(f"Refused: {state.detail}")
+        return None
+    for line in status.watch_lines(state, datetime.now(UTC)):
+        print(line)
+    return state
+
+
+def up() -> int:
+    """Watch 24/7."""
     if paths.gateway_stop_marker().exists():
         print(
             "Note: the DVR rejected the last login, so the gateway stays stopped. "
             "Run `make secrets` with the right password first."
         )
-    launchd.start_components(say=print)
-    return 0
+    return 0 if ask(ALWAYS) else 1
+
+
+def watch(hours: int) -> int:
+    """Watch for ``hours`` hours, then turn off by itself."""
+    return 0 if ask(TIMED, hours) else 1
 
 
 def down(timeout: float = DOWN_TIMEOUT) -> int:
-    """Stop every component and check nothing is left."""
-    launchd.stop_components()
+    """Stop watching, and check that nothing but the control agent is left."""
+    if ask(OFF) is None:
+        return 1
     deadline = time.monotonic() + timeout
     left: list[str] = []
     while time.monotonic() < deadline:
+        state = control.read_state(paths.control_dir())
         left = leftovers()
-        if not left:
+        if not left and state is not None and state.phase == STOPPED:
             break
         time.sleep(0.5)
     if left:
         print(f"Still running after {timeout:g} s: {', '.join(left)}")
         return 1
-    print("Stopped: no Sentinel process or container is running.")
+    print("Stopped: no Sentinel process or container is running except the control agent.")
     return 0
 
 
@@ -155,6 +190,9 @@ def uninstall() -> int:
 
 
 def show_status() -> int:
+    for line in status.watch_lines(control.read_state(paths.control_dir()), datetime.now(UTC)):
+        print(line)
+    print()
     try:
         config = config_module.load(REPOSITORY / config_module.DEFAULT_PATH)
         cameras = [c.id for c in config.cameras]
@@ -170,14 +208,17 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="sentinel.runtime")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("install", help="install the control agent and the component agents")
-    commands.add_parser("up", help="start every component")
-    commands.add_parser("down", help="stop every component")
+    commands.add_parser("up", help="watch 24/7")
+    timed = commands.add_parser("watch", help="watch for some hours, then stop by itself")
+    timed.add_argument("--hours", type=int, choices=DURATIONS_HOURS, required=True)
+    commands.add_parser("down", help="stop watching (only the control agent keeps running)")
     commands.add_parser("status", help="state, uptime and CPU of each component")
     commands.add_parser("uninstall", help="stop and remove every launchd agent")
     args = parser.parse_args(argv)
     actions = {
         "install": install,
         "up": up,
+        "watch": lambda: watch(args.hours),
         "down": down,
         "status": show_status,
         "uninstall": uninstall,

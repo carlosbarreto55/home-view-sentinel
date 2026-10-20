@@ -15,7 +15,7 @@ Each subtask is exactly one commit, using Conventional Commits with the message 
 
 ## 3. Commands
 
-- [ ] 3.1 `make up`, `make watch HOURS=<n>` and `make down` as requests through the agent (wait up to 15 s, print the result); `make status` shows the mode and time left — commit: `feat(runtime): control watching from make through the agent`
+- [x] 3.1 `make up`, `make watch HOURS=<n>` and `make down` as requests through the agent (wait up to 15 s, print the result); `make status` shows the mode and time left — commit: `feat(runtime): control watching from make through the agent`
 
 ## 4. Snapshot time
 

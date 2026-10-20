@@ -4,7 +4,7 @@
 UV    := uv
 MODEL ?= yolo11s
 
-.PHONY: setup secrets install up down status logs uninstall test lint record replay zone-preview
+.PHONY: setup secrets install up watch down status logs uninstall test lint record replay zone-preview
 
 # Installs the dependencies and exports the detection model to CoreML. The
 # export needs PyTorch, which is removed again afterwards (the final sync).
@@ -45,14 +45,21 @@ lint:
 install:
 	$(UV) run python -m sentinel.runtime install
 
-# Start or stop every component.
+# Watching goes through the control agent, like HomeView: `up` watches 24/7,
+# `make watch HOURS=2` for 1, 2, 4, 8 or 12 hours (then it stops by itself),
+# `down` stops watching. Each waits for the agent's answer.
 up:
 	$(UV) run python -m sentinel.runtime up
+
+watch:
+	@test -n "$(HOURS)" || { echo "Usage: make watch HOURS=<1|2|4|8|12>"; exit 2; }
+	$(UV) run python -m sentinel.runtime watch --hours $(HOURS)
 
 down:
 	$(UV) run python -m sentinel.runtime down
 
-# Each component's launchd state, MQTT status, uptime, CPU and memory.
+# The watch mode and time left, then each component's launchd state, MQTT
+# status, uptime, CPU and memory.
 status:
 	$(UV) run python -m sentinel.runtime status
 
