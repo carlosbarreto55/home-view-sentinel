@@ -111,28 +111,70 @@ def test_component_plists_live_in_application_support(tmp_path, monkeypatch):
     assert launchd.components_dir() != launchd.agents_dir()
 
 
-def test_install_writes_the_plists_and_removes_the_old_login_agents(tmp_path):
-    components, legacy = tmp_path / "launchd", tmp_path / "LaunchAgents"
-    legacy.mkdir()
+def test_the_control_agent_starts_at_login_and_always_restarts():
+    plist = launchd.control_agent(REPO, PYTHON, "/opt/homebrew/bin/container", LOGS)
+    assert plist["Label"] == "com.carloseduardo.homeview-sentinel.control"
+    assert plist["ProgramArguments"] == [str(PYTHON), "-m", "sentinel.control"]
+    assert plist["RunAtLoad"] is True
+    assert plist["KeepAlive"] is True
+    assert plist["ThrottleInterval"] == 10
+    assert plist["WorkingDirectory"] == str(REPO)
+    assert plist["StandardErrorPath"] == str(LOGS / "control.launchd.log")
+
+
+def test_install_puts_only_the_control_agent_in_launch_agents(tmp_path):
+    components, agents = tmp_path / "launchd", tmp_path / "LaunchAgents"
+    agents.mkdir()
     for name in ("broker", "detector"):
-        (legacy / f"com.carloseduardo.homeview-sentinel.{name}.plist").write_bytes(b"old")
-    unrelated = legacy / "com.example.other.plist"
+        (agents / f"com.carloseduardo.homeview-sentinel.{name}.plist").write_bytes(b"old")
+    unrelated = agents / "com.example.other.plist"
     unrelated.write_bytes(b"keep")
-    launchctl = FakeLaunchctl(loaded={"com.carloseduardo.homeview-sentinel.detector"})
+    launchctl = FakeLaunchctl(
+        loaded={
+            "com.carloseduardo.homeview-sentinel.control",
+            "com.carloseduardo.homeview-sentinel.detector",
+        }
+    )
     removed = launchd.install(
-        REPO, run=launchctl, directory=components, legacy_directory=legacy, sleep=lambda s: None
+        REPO, run=launchctl, directory=components, agents_directory=agents, sleep=lambda s: None
     )
     assert removed == ["broker", "detector"]
     assert sorted(p.name for p in components.glob("*.plist")) == sorted(
         f"{label}.plist" for label in rendered()
     )
-    assert [p.name for p in legacy.iterdir()] == [unrelated.name]
-    # The running detector is unloaded so the new definition takes effect; nothing starts.
-    assert names(launchctl, "bootout") == ["detector"]
-    assert names(launchctl, "bootstrap") == []
-    assert not launchctl.loaded
+    assert sorted(p.name for p in agents.iterdir()) == [
+        "com.carloseduardo.homeview-sentinel.control.plist",
+        unrelated.name,
+    ]
+    control = plistlib.loads(
+        (agents / "com.carloseduardo.homeview-sentinel.control.plist").read_bytes()
+    )
+    assert control["KeepAlive"] is True
+    # The control agent goes first (or it would start the components again),
+    # then the running detector, so the new definitions take effect.
+    assert names(launchctl, "bootout") == ["control", "detector"]
+    # Only the control agent is loaded; it starts the components if the mode says so.
+    assert names(launchctl, "bootstrap") == ["control"]
+    assert launchctl.loaded == {"com.carloseduardo.homeview-sentinel.control"}
     # A component disabled by an older `make down` is enabled again.
-    assert names(launchctl, "enable") == NAMES
+    assert [n for n in names(launchctl, "enable") if n != "control"] == NAMES
+
+
+def test_uninstall_removes_every_agent(tmp_path):
+    components, agents = tmp_path / "launchd", tmp_path / "LaunchAgents"
+    launchctl = FakeLaunchctl()
+    launchd.install(
+        REPO, run=launchctl, directory=components, agents_directory=agents, sleep=lambda s: None
+    )
+    launchctl.loaded |= {f"com.carloseduardo.homeview-sentinel.{n}" for n in NAMES}
+    launchctl.calls.clear()
+    left = launchd.uninstall(
+        run=launchctl, directory=components, agents_directory=agents, sleep=lambda s: None
+    )
+    assert left == []
+    assert names(launchctl, "bootout") == ["control", *reversed(NAMES)]
+    assert not launchctl.loaded
+    assert list(components.iterdir()) == [] and list(agents.iterdir()) == []
 
 
 def test_start_components_loads_them_in_order_from_application_support(tmp_path):

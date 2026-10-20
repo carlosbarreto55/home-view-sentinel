@@ -39,9 +39,9 @@ lint:
 	$(UV) run ruff check src tests
 	$(UV) run ruff format --check src tests
 
-# Writes the component launchd agents to Application Support (loaded only on
-# demand, never at login by themselves), and serves ntfy on the tailnet with
-# Tailscale Serve.
+# Installs the control agent (at login, always running) and writes the
+# component agents to Application Support (loaded only by the control agent),
+# and serves ntfy on the tailnet with Tailscale Serve.
 install:
 	$(UV) run python -m sentinel.runtime install
 
@@ -60,6 +60,6 @@ status:
 logs:
 	tail -n 20 -F "$(HOME)/Library/Logs/HomeView Sentinel/"*.log
 
-# Stop everything and remove the launchd agents (data and logs are kept).
+# Stop everything and remove every launchd agent (data and logs are kept).
 uninstall:
 	$(UV) run python -m sentinel.runtime uninstall

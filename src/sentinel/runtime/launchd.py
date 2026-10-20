@@ -1,6 +1,9 @@
-"""launchd agents for every component, and ``make install``.
+"""launchd agents for the control agent and every component, and ``make install``.
 
-One agent per component, ``com.carloseduardo.homeview-sentinel.<component>``:
+Only the control agent, ``com.carloseduardo.homeview-sentinel.control``, is in
+``~/Library/LaunchAgents``: it starts at login and is restarted 10 s after it
+exits for any reason (``KeepAlive`` true). It loads and unloads the others,
+one agent per component, ``com.carloseduardo.homeview-sentinel.<component>``:
 
 - ``container-system`` runs ``container system start`` once when loaded;
 - ``broker``, ``ntfy`` and ``gateway`` run their container launchers;
@@ -53,6 +56,8 @@ COMPONENTS = (
     Component("detector", "sentinel.detector", "detector"),
 )
 
+CONTROL = Component("control", "sentinel.control", "control agent (watch mode)")
+
 
 def label(component: Component) -> str:
     return f"{PREFIX}.{component.name}"
@@ -104,6 +109,13 @@ def agent(
         plist["KeepAlive"] = {"SuccessfulExit": False}
         plist["ThrottleInterval"] = THROTTLE_SECONDS
         plist["ExitTimeOut"] = EXIT_TIMEOUT_SECONDS
+    return plist
+
+
+def control_agent(repository: Path, python: Path, container_bin: str, logs: Path) -> dict:
+    """The control agent's property list: at login, and always running."""
+    plist = agent(CONTROL, repository, python, container_bin, logs)
+    plist["KeepAlive"] = True
     return plist
 
 
@@ -195,27 +207,56 @@ def remove_legacy(run: Runner = _run, directory: Path | None = None) -> list[str
     return removed
 
 
+def control_plist_path(directory: Path | None = None) -> Path:
+    return plist_path(CONTROL, directory or agents_dir())
+
+
 def install(
     repository: Path,
     run: Runner = _run,
     directory: Path | None = None,
-    legacy_directory: Path | None = None,
+    agents_directory: Path | None = None,
     sleep: Callable[[float], None] = time.sleep,
 ) -> list[str]:
-    """Unload every component, remove the old login agents and write the
-    component plists, so the new definitions take effect at the next start.
-    Returns the old agents removed."""
+    """Unload the control agent and every component, remove the old login
+    agents, write the plists and load the control agent again, which then
+    starts the components if the saved mode says so. Returns the old agents removed."""
     python = repository / ".venv" / "bin" / "python"
     container_bin = shutil.which("container", path=SEARCH_PATH) or "/opt/homebrew/bin/container"
     logs = paths.logs_dir()
     logs.mkdir(parents=True, exist_ok=True)
     directory = directory or components_dir()
     directory.mkdir(parents=True, exist_ok=True)
+    agents_directory = agents_directory or agents_dir()
+    agents_directory.mkdir(parents=True, exist_ok=True)
     rendered = render(repository, python, container_bin, logs)
+    # The control agent first, or it would start the components again.
+    if not unload(CONTROL, run, sleep=sleep):
+        raise RuntimeError(f"{label(CONTROL)} did not stop")
     left = stop_components(run, sleep)
     if left:
         raise RuntimeError(f"{', '.join(left)} did not stop")
-    removed = remove_legacy(run, legacy_directory)
+    removed = remove_legacy(run, agents_directory)
     for component in COMPONENTS:
         plist_path(component, directory).write_bytes(rendered[label(component)])
+    control = control_plist_path(agents_directory)
+    control.write_bytes(plistlib.dumps(control_agent(repository, python, container_bin, logs)))
+    start(CONTROL, run, agents_directory)
     return removed
+
+
+def uninstall(
+    run: Runner = _run,
+    directory: Path | None = None,
+    agents_directory: Path | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+) -> list[str]:
+    """Unload and remove the control agent and every component; returns the
+    components that did not stop."""
+    unload(CONTROL, run, sleep=sleep)
+    left = stop_components(run, sleep)
+    control_plist_path(agents_directory).unlink(missing_ok=True)
+    for component in COMPONENTS:
+        plist_path(component, directory).unlink(missing_ok=True)
+    remove_legacy(run, agents_directory)
+    return left

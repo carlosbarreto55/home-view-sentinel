@@ -11,7 +11,7 @@ Each subtask is exactly one commit, using Conventional Commits with the message 
 - [x] 2.3 Keep awake on power adapter: a `caffeinate -s` child while watching, released when off; power source from `pmset -g batt`; tests with fake processes — commit: `feat(control): keep the Mac awake on power adapter while watching`
 - [x] 2.4 Phase, cameras and last alert from the bus with a new `control` broker user (`make secrets`, broker password file); last alert built with the notifier's messages and kept in `control/last-alert.json`, dropped when its snapshot is gone; tests with scripted statuses and events — commit: `feat(control): follow component status and remember the last alert`
 - [x] 2.5 `state.json` written atomically (0600, every change and every 5 s) and `request.json` watched, validated, applied within 2 s and reported as applied or refused; tests with a temporary folder and an injected clock — commit: `feat(control): write the state and accept requests from other apps`
-- [ ] 2.6 Entry point `python -m sentinel.control` and its launchd agent (`RunAtLoad`, `KeepAlive`), first mode off — commit: `feat(control): run the control agent at login`
+- [x] 2.6 Entry point `python -m sentinel.control` and its launchd agent (`RunAtLoad`, `KeepAlive`), first mode off — commit: `feat(control): run the control agent at login`
 
 ## 3. Commands
 

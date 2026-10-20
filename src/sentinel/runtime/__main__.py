@@ -79,6 +79,7 @@ def install() -> int:
     if removed:
         print(f"Removed the old login agents from {launchd.agents_dir()}: {', '.join(removed)}")
     print(f"Wrote the component agents to {launchd.components_dir()}.")
+    print(f"Installed the control agent in {launchd.agents_dir()}; it keeps the current mode.")
     print(tailscale_serve())
     settings = config_module.load(REPOSITORY / config_module.DEFAULT_PATH).notifications
     print(
@@ -90,7 +91,8 @@ def install() -> int:
 
 
 def installed() -> bool:
-    return all(launchd.plist_path(c).exists() for c in launchd.COMPONENTS)
+    plists = [launchd.control_plist_path()] + [launchd.plist_path(c) for c in launchd.COMPONENTS]
+    return all(path.exists() for path in plists)
 
 
 def up() -> int:
@@ -143,12 +145,13 @@ def _pids(pattern: str) -> list[str]:
 
 
 def uninstall() -> int:
-    code = down()
-    for component in launchd.COMPONENTS:
-        launchd.plist_path(component).unlink(missing_ok=True)
-    launchd.remove_legacy()
-    print(f"Removed the launchd agents from {launchd.components_dir()}. Data and logs are kept.")
-    return code
+    left = launchd.uninstall()
+    left += [name for name in leftovers() if name not in left]
+    print("Removed the control agent and the component agents. Data and logs are kept.")
+    if left:
+        print(f"Still running: {', '.join(left)}")
+        return 1
+    return 0
 
 
 def show_status() -> int:
@@ -166,11 +169,11 @@ def show_status() -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="sentinel.runtime")
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("install", help="write the launchd agents")
+    commands.add_parser("install", help="install the control agent and the component agents")
     commands.add_parser("up", help="start every component")
     commands.add_parser("down", help="stop every component")
     commands.add_parser("status", help="state, uptime and CPU of each component")
-    commands.add_parser("uninstall", help="stop and remove the launchd agents")
+    commands.add_parser("uninstall", help="stop and remove every launchd agent")
     args = parser.parse_args(argv)
     actions = {
         "install": install,
