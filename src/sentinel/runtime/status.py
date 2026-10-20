@@ -5,16 +5,22 @@
   each camera, notifier), with its detail;
 - uptime: since the MQTT status changed, or the process's elapsed time;
 - CPU and memory: the process for native components, the container for the
-  broker, ntfy and the gateway (sampled over one second).
+  broker, ntfy and the gateway (sampled over one second);
+- Tailscale: whether the Mac is connected and ntfy answers at its tailnet
+  address. Without it the iPhone still gets the wake-up from ntfy.sh but cannot
+  fetch the alert, so the notification opens nothing.
 """
 
 from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
 import threading
 import time
+import urllib.error
+import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -24,6 +30,7 @@ from sentinel.bus import client as bus
 from sentinel.bus.client import Status
 from sentinel.runtime import container, launchd
 
+TAILSCALE_APP_CLI = "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
 CONTAINERS = {"broker": "sentinel-broker", "ntfy": "sentinel-ntfy", "gateway": "sentinel-gateway"}
 
 
@@ -223,7 +230,63 @@ def report(
     return lines
 
 
-def collect(camera_ids: list[str], now: Callable[[], datetime] = lambda: datetime.now(UTC)):
+def tailscale_cli() -> str:
+    return shutil.which("tailscale") or TAILSCALE_APP_CLI
+
+
+def _run_tailscale(command: list[str]) -> subprocess.CompletedProcess:
+    return subprocess.run(command, capture_output=True, text=True, timeout=10, check=False)
+
+
+def tailscale_state(run: launchd.Runner = _run_tailscale) -> str:
+    """Tailscale's backend state on this Mac: Running, Stopped, NeedsLogin…"""
+    try:
+        result = run([tailscale_cli(), "status", "--json"])
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return f"unknown ({error})"
+    try:
+        return json.loads(result.stdout)["BackendState"]
+    except (ValueError, KeyError, TypeError):
+        lines = (result.stderr or result.stdout).strip().splitlines()
+        return f"unknown ({lines[0] if lines else f'exit code {result.returncode}'})"
+
+
+def ntfy_problem(
+    base_url: str, open_url=urllib.request.urlopen, timeout: float = 5.0
+) -> str | None:
+    """None when ntfy answers its health check at the tailnet address, else why not."""
+    try:
+        with open_url(f"{base_url.rstrip('/')}/v1/health", timeout=timeout) as response:
+            if json.loads(response.read()).get("healthy") is True:
+                return None
+            return "answers but is not healthy"
+    except urllib.error.HTTPError as error:
+        return f"{error.code} {error.reason}"
+    except (urllib.error.URLError, OSError) as error:
+        return str(getattr(error, "reason", error))
+    except ValueError:
+        return "answers with something that is not ntfy"
+
+
+def tailscale_lines(state: str, base_url: str | None, problem: str | None) -> list[str]:
+    connected = state == "Running"
+    lines = [f"{'tailscale':<18} {'connected' if connected else state}"]
+    if base_url:
+        reach = "reachable" if problem is None else f"NOT reachable ({problem})"
+        lines.append(f"{'  ntfy on tailnet':<18} {reach}  {base_url}")
+    if not connected or problem is not None:
+        lines.append(
+            "(the iPhone gets the wake-up but cannot fetch the alerts: "
+            "open Tailscale on the Mac and connect)"
+        )
+    return lines
+
+
+def collect(
+    camera_ids: list[str],
+    ntfy_base_url: str | None = None,
+    now: Callable[[], datetime] = lambda: datetime.now(UTC),
+):
     agents = {c.name: agent(c) for c in launchd.COMPONENTS}
     retained = statuses()
     native = {
@@ -240,4 +303,6 @@ def collect(camera_ids: list[str], now: Callable[[], datetime] = lambda: datetim
     lines = report(agents, retained, usage, camera_ids, now())
     if retained is None:
         lines.append("(the broker is not reachable: no MQTT statuses)")
+    problem = ntfy_problem(ntfy_base_url) if ntfy_base_url else None
+    lines += tailscale_lines(tailscale_state(), ntfy_base_url, problem)
     return lines

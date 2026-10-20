@@ -106,3 +106,58 @@ def test_native_usage_includes_child_processes():
     assert usage[500] == status.Usage(17.5, 298.0)
     assert usage[600] == status.Usage(0.1, 30.0)
     assert 999 not in usage
+
+
+def test_tailscale_state_comes_from_the_cli():
+    running = fake_launchctl('{"BackendState": "Running", "Self": {}}')
+    assert status.tailscale_state(running) == "Running"
+    assert status.tailscale_state(fake_launchctl('{"BackendState": "Stopped"}')) == "Stopped"
+
+    def gui(command):
+        return subprocess.CompletedProcess(command, 1, "", "GUI failed to start\n")
+
+    assert status.tailscale_state(gui) == "unknown (GUI failed to start)"
+
+
+class FakeResponse:
+    def __init__(self, body):
+        self.body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self):
+        return self.body
+
+
+def test_ntfy_problem_checks_health_at_the_tailnet_address():
+    asked = []
+
+    def healthy(url, timeout):
+        asked.append(url)
+        return FakeResponse(b'{"healthy":true}')
+
+    assert status.ntfy_problem("https://mac.tailnet.ts.net/", healthy) is None
+    assert asked == ["https://mac.tailnet.ts.net/v1/health"]
+
+    def unreachable(url, timeout):
+        raise status.urllib.error.URLError("nodename nor servname provided")
+
+    assert status.ntfy_problem("https://mac.tailnet.ts.net", unreachable) == (
+        "nodename nor servname provided"
+    )
+
+
+def test_tailscale_lines_warn_only_when_something_is_wrong():
+    url = "https://mac.tailnet.ts.net"
+    ok = status.tailscale_lines("Running", url, None)
+    assert ok[0].split() == ["tailscale", "connected"]
+    assert "reachable" in ok[1] and url in ok[1]
+    assert len(ok) == 2
+    down = status.tailscale_lines("Stopped", url, "timed out")
+    assert down[0].split() == ["tailscale", "Stopped"]
+    assert "NOT reachable (timed out)" in down[1]
+    assert "open Tailscale on the Mac" in down[2]
