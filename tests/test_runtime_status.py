@@ -35,7 +35,10 @@ def test_reads_launchd_state():
 
 
 def test_report_lists_every_component_and_camera():
-    agents = {c.name: status.Agent(True, 100 + i, None) for i, c in enumerate(launchd.COMPONENTS)}
+    agents = {
+        c.name: status.Agent(True, 100 + i, None)
+        for i, c in enumerate((launchd.CONTROL, *launchd.COMPONENTS))
+    }
     agents["gateway"] = status.Agent(False, None, "0")
     retained = {
         "gateway": Status(
@@ -51,6 +54,7 @@ def test_report_lists_every_component_and_camera():
     text = "\n".join(lines)
     names = [line.split()[0] for line in lines[1:]]
     assert names == [
+        "control",
         "container-system",
         "broker",
         "ntfy",
@@ -62,7 +66,7 @@ def test_report_lists_every_component_and_camera():
         "total",
     ]
     detector = next(line for line in lines if line.startswith("detector"))
-    assert "running 105" in detector and "online" in detector and "2h 3m" in detector
+    assert "running 106" in detector and "online" in detector and "2h 3m" in detector
     assert "12.5%" in detector and "512 MB" in detector
     gateway = next(line for line in lines if line.startswith("gateway"))
     assert "stopped (exit 0)" in gateway and "Usuário ou senha do DVR incorretos" in gateway
@@ -161,3 +165,61 @@ def test_tailscale_lines_warn_only_when_something_is_wrong():
     assert down[0].split() == ["tailscale", "Stopped"]
     assert "NOT reachable (timed out)" in down[1]
     assert "open Tailscale on the Mac" in down[2]
+
+
+def control_state(**changes):
+    from dataclasses import replace
+
+    from sentinel.control.contract import ControlState
+
+    base = ControlState(
+        written_at=NOW,
+        mode="timed",
+        until=NOW + timedelta(hours=1, minutes=59),
+        phase="watching",
+        detail=None,
+        power="ac",
+        kept_awake=True,
+        cameras=(),
+        applied_request=None,
+        refused_request=None,
+        last_alert=None,
+    )
+    return replace(base, **changes)
+
+
+def test_watch_lines_show_the_mode_and_time_left():
+    lines = status.watch_lines(control_state(), NOW)
+    until = status.local_time(NOW + timedelta(hours=1, minutes=59), NOW)
+    assert lines[0].split(None, 2) == ["watch", "mode", f"watching until {until} (1h 59m left)"]
+    assert lines[1].split() == ["phase", "watching"]
+    assert "power adapter, kept awake" in lines[2]
+    assert len(lines) == 3
+
+
+def test_watch_lines_for_24_7_off_battery_and_problems():
+    assert "watching 24/7" in status.watch_lines(control_state(mode="always", until=None), NOW)[0]
+    off = status.watch_lines(control_state(mode="off", until=None, phase="stopped"), NOW)
+    assert off[0].endswith("off") and len(off) == 2
+    battery = status.watch_lines(control_state(power="battery", kept_awake=False), NOW)
+    assert "battery: the Mac may sleep" in battery[2]
+    problem = status.watch_lines(
+        control_state(phase="problem", detail="Usuário ou senha do DVR incorretos"), NOW
+    )
+    assert problem[1].split(None, 1)[1] == "problem: Usuário ou senha do DVR incorretos"
+
+
+def test_watch_lines_when_the_agent_is_not_running():
+    stale = status.watch_lines(control_state(written_at=NOW - timedelta(seconds=40)), NOW)
+    assert stale[-1] == "(the control agent is not running: its state is 40s old)"
+    assert "make install" in status.watch_lines(None, NOW)[0]
+
+
+def test_local_time_names_the_day_when_it_is_not_today():
+    from datetime import datetime
+
+    now = datetime.now().astimezone()
+    assert status.local_time(now, now) == now.strftime("%H:%M")
+    assert status.local_time(now + timedelta(days=1), now) == (now + timedelta(days=1)).strftime(
+        "%d/%m %H:%M"
+    )

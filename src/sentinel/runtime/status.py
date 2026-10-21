@@ -1,5 +1,8 @@
-"""``make status``: each component's launchd state, MQTT status, uptime and CPU.
+"""``make status``: the watch mode, and each component's launchd state, MQTT
+status, uptime and CPU.
 
+- watch mode: from the control agent's ``state.json`` (off, 24/7, or until when
+  and the time left), its phase and the power source;
 - launchd: running (with pid) or not, and the last exit code;
 - MQTT: the retained status each component publishes (gateway, detector and
   each camera, notifier), with its detail;
@@ -28,6 +31,8 @@ from datetime import UTC, datetime
 from sentinel import secrets
 from sentinel.bus import client as bus
 from sentinel.bus.client import Status
+from sentinel.control import client as control
+from sentinel.control.contract import ALWAYS, BATTERY, OFF, PROBLEM, ControlState
 from sentinel.runtime import container, launchd
 
 TAILSCALE_APP_CLI = "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
@@ -204,6 +209,40 @@ def row(
     return f"{name:<18} {process:<22} {state:<13} {since:>8}  {cpu} {memory}  {detail}".rstrip()
 
 
+def local_time(moment: datetime, now: datetime) -> str:
+    """``20:00`` today, ``21/10 08:00`` another day, in the Mac's time zone."""
+    local, today = moment.astimezone(), now.astimezone()
+    return local.strftime("%H:%M" if local.date() == today.date() else "%d/%m %H:%M")
+
+
+def mode_text(state: ControlState, now: datetime) -> str:
+    if state.mode == OFF:
+        return "off"
+    if state.mode == ALWAYS:
+        return "watching 24/7"
+    left = duration((state.until - now).total_seconds())
+    return f"watching until {local_time(state.until, now)} ({left} left)"
+
+
+def watch_lines(state: ControlState | None, now: datetime) -> list[str]:
+    """The watch mode and what the components are doing, for ``make status``
+    and after ``make up``, ``make watch`` and ``make down``."""
+    if state is None:
+        return [f"{'watch mode':<18} unknown (no control state: run `make install`)"]
+    phase = state.phase if state.phase != PROBLEM else f"problem: {state.detail}"
+    lines = [f"{'watch mode':<18} {mode_text(state, now)}", f"{'  phase':<18} {phase}"]
+    if state.mode != OFF:
+        if state.power == BATTERY:
+            lines.append(f"{'  power':<18} battery: the Mac may sleep and stop watching")
+        else:
+            awake = "kept awake" if state.kept_awake else "NOT kept awake"
+            lines.append(f"{'  power':<18} power adapter, {awake}")
+    if control.stale(state, now):
+        age = duration((now - state.written_at).total_seconds())
+        lines.append(f"(the control agent is not running: its state is {age} old)")
+    return lines
+
+
 HEADER = f"{'component':<18} {'launchd':<22} {'status':<13} {'for':>8}  {'cpu':>6} {'memory':>9}"
 
 
@@ -216,7 +255,7 @@ def report(
 ) -> list[str]:
     lines = [HEADER]
     retained = retained or {}
-    for component in launchd.COMPONENTS:
+    for component in (launchd.CONTROL, *launchd.COMPONENTS):
         name = component.name
         process = process_text(agents.get(name))
         lines.append(row(name, process, retained.get(name), usage.get(name), now))
@@ -287,7 +326,7 @@ def collect(
     ntfy_base_url: str | None = None,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
 ):
-    agents = {c.name: agent(c) for c in launchd.COMPONENTS}
+    agents = {c.name: agent(c) for c in (launchd.CONTROL, *launchd.COMPONENTS)}
     retained = statuses()
     native = {
         name: info.pid

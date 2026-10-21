@@ -46,3 +46,8 @@ def broker_dir() -> Path:
 def ntfy_dir() -> Path:
     """ntfy's user database, message cache and attachment cache."""
     return data_dir() / "ntfy"
+
+
+def control_dir() -> Path:
+    """The control agent's mode, state and request files (the contract with HomeView)."""
+    return data_dir() / "control"

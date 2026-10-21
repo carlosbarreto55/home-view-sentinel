@@ -4,7 +4,7 @@
 UV    := uv
 MODEL ?= yolo11s
 
-.PHONY: setup secrets install up down status logs uninstall test lint record replay zone-preview
+.PHONY: setup secrets install up watch down status logs uninstall test lint record replay zone-preview
 
 # Installs the dependencies and exports the detection model to CoreML. The
 # export needs PyTorch, which is removed again afterwards (the final sync).
@@ -39,19 +39,27 @@ lint:
 	$(UV) run ruff check src tests
 	$(UV) run ruff format --check src tests
 
-# Installs the launchd agents (every component starts now and at each login),
+# Installs the control agent (at login, always running) and writes the
+# component agents to Application Support (loaded only by the control agent),
 # and serves ntfy on the tailnet with Tailscale Serve.
 install:
 	$(UV) run python -m sentinel.runtime install
 
-# Start or stop every component; `down` also keeps them off at the next login.
+# Watching goes through the control agent, like HomeView: `up` watches 24/7,
+# `make watch HOURS=2` for 1, 2, 4, 8 or 12 hours (then it stops by itself),
+# `down` stops watching. Each waits for the agent's answer.
 up:
 	$(UV) run python -m sentinel.runtime up
+
+watch:
+	@test -n "$(HOURS)" || { echo "Usage: make watch HOURS=<1|2|4|8|12>"; exit 2; }
+	$(UV) run python -m sentinel.runtime watch --hours $(HOURS)
 
 down:
 	$(UV) run python -m sentinel.runtime down
 
-# Each component's launchd state, MQTT status, uptime, CPU and memory.
+# The watch mode and time left, then each component's launchd state, MQTT
+# status, uptime, CPU and memory.
 status:
 	$(UV) run python -m sentinel.runtime status
 
@@ -59,6 +67,6 @@ status:
 logs:
 	tail -n 20 -F "$(HOME)/Library/Logs/HomeView Sentinel/"*.log
 
-# Stop everything and remove the launchd agents (data and logs are kept).
+# Stop everything and remove every launchd agent (data and logs are kept).
 uninstall:
 	$(UV) run python -m sentinel.runtime uninstall

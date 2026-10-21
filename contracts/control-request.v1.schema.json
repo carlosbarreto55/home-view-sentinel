@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://homeview-sentinel.local/contracts/control-request.v1.schema.json",
+  "title": "HomeView Sentinel control request, version 1",
+  "description": "Written by a client to ~/Library/Application Support/HomeView Sentinel/control/request.json (temporary file and rename). The control agent reads it within 2 seconds, deletes it, and reports its id as applied_request or refused_request in state.json. A newer request replaces one not read yet.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "mode"],
+  "properties": {
+    "schema": {"const": "sentinel.control-request/v1"},
+    "id": {"type": "string", "minLength": 1, "maxLength": 128, "description": "Chosen by the client, e.g. a UUID."},
+    "mode": {"enum": ["off", "always", "timed"]},
+    "hours": {"enum": [1, 2, 4, 8, 12], "description": "Only for timed: the watch ends this many hours from when it is applied."}
+  },
+  "if": {"properties": {"mode": {"const": "timed"}}},
+  "then": {"required": ["hours"]},
+  "else": {"not": {"required": ["hours"]}}
+}

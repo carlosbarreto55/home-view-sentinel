@@ -25,7 +25,7 @@ SERVICE = "com.carloseduardo.homeview-sentinel"
 DVR_USER = "dvr-user"
 DVR_PASSWORD = "dvr-password"
 # One broker user per component; the password item is "mqtt-<user>".
-MQTT_USERS = ("gateway", "detector", "notifier", "admin")
+MQTT_USERS = ("gateway", "detector", "notifier", "control", "admin")
 NTFY_PHONE_USER = "iphone"
 NTFY_PHONE_PASSWORD = "ntfy-phone-password"
 NTFY_NOTIFIER_TOKEN = "ntfy-notifier-token"
