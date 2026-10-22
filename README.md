@@ -172,8 +172,9 @@ The project is planned with [OpenSpec](https://github.com/Fission-AI/OpenSpec).
 - **One commit per task.** Each task is a single
   [Conventional Commit](https://www.conventionalcommits.org/) containing the
   code, its tests and the ticked box, and every commit passes `make test`.
-  Problems found later get their own `fix(...)` commits; history is never
-  rewritten.
+  Problems found later get their own `fix(...)` commits. The history was
+  rewritten only once, before the repository went public, to take private
+  details out of it (addresses, location, unblurred pictures).
 - **Spikes first.** Before building the services, "spike" tasks tested the
   risky assumptions on the real Mac, DVR and iPhone. Their findings are in
   `docs/spike-notes.md` and feed back into the design.
