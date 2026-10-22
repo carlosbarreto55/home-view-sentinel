@@ -14,7 +14,8 @@ never leaves the home network.
 *The first real detection, on 2026-10-18 at 20:15. A food delivery motorcycle
 stopped at the curb in front of the garage. This is the snapshot Sentinel
 attaches to the push: the vehicle in red, the "Calçada" zone in yellow. People
-are pixelated and the house is blurred for privacy.*
+are pixelated, and everything but the street and the sidewalk is blurred for
+privacy.*
 
 The push that arrived on the iPhone, with that picture attached:
 
@@ -68,6 +69,14 @@ The push that arrived on the iPhone, with that picture attached:
      message and the picture stay on the Mac.
    - Away from home, the iPhone reaches the server through Tailscale.
      Nothing is port-forwarded.
+6. **Control agent.** It is the only part that starts at login, and it uses
+   next to nothing. It holds the watch mode (off, a timed watch of 1 to 12
+   hours, or 24/7) and starts and stops every other component to match.
+   - While watching on the power adapter, it keeps the Mac awake, even with the
+     screen locked.
+   - Other apps on the Mac can read its state and request a mode through two
+     JSON files with versioned schemas in [`contracts/`](contracts/). No
+     network port is opened.
 
 ### Seeing it work
 
@@ -91,15 +100,27 @@ holds each car steadily. Both take under 3 ms per frame on the Neural Engine.
 
 ## Status
 
-Work in progress: **24 of 35 tasks** of the first OpenSpec change are done.
+Sentinel already runs on the real Mac, DVR and iPhone. Both OpenSpec changes
+are built and covered by **416 unit tests**. What is left is measuring and
+verifying on the real hardware:
+
+| Change | Tasks done | Left |
+| --- | --- | --- |
+| [`stopped-vehicle-alerts`](openspec/changes/stopped-vehicle-alerts/tasks.md) | 31 of 35 | calibrating the zones with daytime and nighttime clips, a one-hour resource measurement, the manual verification checklist, the full README |
+| [`watch-schedule`](openspec/changes/watch-schedule/tasks.md) | 9 of 10 | the manual checks on the Mac (sleep, reboot, battery, killing the agent) |
 
 **Built and tested:**
 - Configuration and Keychain secrets.
-- The DVR login probe and the go2rtc config.
-- The event contract and the MQTT client.
+- The stream gateway: the DVR login probe, the go2rtc config and its container.
+- The event bus: the Mosquitto container, the event contract and the MQTT client.
 - The whole detector: frame reader, CoreML inference, riders, tracking, zones,
-  the dwell state machine and snapshots.
-- The notification messages and the ntfy client.
+  the dwell state machine and snapshots stamped with the Mac's local time.
+- Notifications: the ntfy server container, the messages in Portuguese, and the
+  notifier service with offline alerts.
+- The runtime: launchd agents, `make install` / `up` / `watch` / `down` /
+  `status` / `logs`, and daily log rotation.
+- The control agent: watch modes, keeping the Mac awake on the power adapter,
+  the state and request contract for other apps, and the last alert.
 - Clip recording, replay and zone preview tools.
 
 **Validated on the real hardware** (Mac, DVR, iPhone): see
@@ -114,22 +135,19 @@ Work in progress: **24 of 35 tasks** of the first OpenSpec change are done.
 - yolo11s on the main stream was chosen over yolo11n and over the substream.
 - Pushes arrive instantly on the locked iPhone, on Wi-Fi and on mobile data,
   with the picture and correct Portuguese accents.
-
-**Still to do:**
-- The gateway, Mosquitto and ntfy containers, the notifier service, and the
-  launchd agents.
-- `make up` / `make down` / `make status` / `make logs`.
-- Calibrating the zones with daytime and nighttime clips.
-- A one-hour resource measurement and a manual verification checklist.
+- While watching, all of Sentinel uses about 35% of one CPU core and 1.3 GB of
+  RAM on a MacBook Air
+  ([measured](openspec/changes/watch-schedule/proposal.md) on 2026-10-19). That
+  cost is why the timed watch modes exist.
 
 ## Repository layout
 
 | Path | What is in it |
 | --- | --- |
 | [`openspec/`](openspec/) | The spec-driven plan: [proposal](openspec/changes/stopped-vehicle-alerts/proposal.md), [design](openspec/changes/stopped-vehicle-alerts/design.md), [tasks](openspec/changes/stopped-vehicle-alerts/tasks.md), and one spec per capability (stream gateway, vehicle detection, dwell alerts, event bus, phone notifications, service runtime). |
-| `src/sentinel/` | The Python package: `config`, `secrets`, `rtsp_probe`, `gateway/`, `bus/`, `detector/`, `notifier/`. |
+| `src/sentinel/` | The Python package: `config`, `secrets`, `rtsp_probe`, `gateway/`, `bus/`, `detector/`, `notifier/`, `runtime/` (launchd agents and `make` commands), `control/` (the control agent). |
 | `tests/` | Unit tests, including a fake RTSP server and scripted detections replayed through the real pipeline. |
-| `contracts/` | The JSON Schema of the MQTT events. |
+| `contracts/` | The JSON Schemas of the MQTT events and of the control agent's state and requests. |
 | `config/sentinel.example.yaml` | Cameras, zones, thresholds, quiet hours. Copy it to `config/sentinel.yaml`, which is not committed. |
 | `docs/spike-notes.md` | What was measured on the real Mac, DVR and iPhone, and what it changed. |
 | `scripts/` | The spike scripts (decode benchmark, model comparison, test pushes). |
@@ -140,12 +158,14 @@ Work in progress: **24 of 35 tasks** of the first OpenSpec change are done.
 
 The project is planned with [OpenSpec](https://github.com/Fission-AI/OpenSpec).
 
-- **The change.** Everything in this first version is one change,
-  [`stopped-vehicle-alerts`](openspec/changes/stopped-vehicle-alerts/), with:
-  - a proposal (why and what);
-  - a design (17 decisions, risks, open questions);
-  - six capability specs, written as requirements with WHEN/THEN scenarios;
-  - a task list.
+- **The changes.** The work is split into two changes, each with a proposal
+  (why and what), a design (decisions, risks, open questions), capability specs
+  written as requirements with WHEN/THEN scenarios, and a task list:
+  - [`stopped-vehicle-alerts`](openspec/changes/stopped-vehicle-alerts/), the
+    first version: 17 design decisions and six capability specs;
+  - [`watch-schedule`](openspec/changes/watch-schedule/), the control agent and
+    the watch modes: a new `watch-control` spec, plus changes to two existing
+    ones.
 - **One commit per task.** Each task is a single
   [Conventional Commit](https://www.conventionalcommits.org/) containing the
   code, its tests and the ticked box, and every commit passes `make test`.
@@ -170,17 +190,36 @@ The project is planned with [OpenSpec](https://github.com/Fission-AI/OpenSpec).
 ```sh
 make setup      # install dependencies, export the YOLO model to CoreML
 make secrets    # store the DVR login and generate service credentials in the Keychain
-cp config/sentinel.example.yaml config/sentinel.yaml   # set cameras and zones
+cp config/sentinel.example.yaml config/sentinel.yaml
+                # set the cameras, the zones and notifications.ntfy_base_url
+                # (the Mac's https://<mac>.<tailnet>.ts.net address)
 make test
+make install    # the control agent at login, the component agents, and
+                # Tailscale Serve in front of ntfy
+```
 
-# Calibrate the zones on real footage:
+Then subscribe to the topic in the ntfy app on the iPhone, through the same
+Tailscale address.
+
+Watching is controlled through the control agent. Each command waits for its
+answer:
+
+```sh
+make watch HOURS=2   # watch for 1, 2, 4, 8 or 12 hours, then stop by itself
+make up              # watch 24/7
+make down            # stop watching; only the control agent keeps running
+make status          # the watch mode and time left, then each component's state, CPU and memory
+make logs            # follow every component's log
+make uninstall       # remove every launchd agent (data and logs are kept)
+```
+
+To calibrate the zones on real footage:
+
+```sh
 make record CAMERA=garagem MINUTES=10            # save a clip from the gateway
 make replay CLIP=clips/<clip>.mp4 CAMERA=garagem # print the events it would produce
 make zone-preview CAMERA=garagem                 # draw the zones on a live frame
 ```
-
-Running everything as background services (`make up`) is not built yet; see
-[Status](#status).
 
 ## Security and privacy
 
@@ -194,14 +233,21 @@ Running everything as background services (`make up`) is not built yet; see
   through Tailscale; nothing is port-forwarded.
 - **Video.** Video and snapshots stay on the Mac. Snapshots are deleted after
   14 days.
-- **Accepted limitation.** If the Mac sleeps, reboots or leaves home, nothing is
-  watched. The detector-offline push makes that visible.
+- **Accepted limitation.** If the Mac is off, asleep on battery or away from
+  home, nothing is watched. On the power adapter, Sentinel keeps the Mac awake
+  while it watches. The detector-offline push makes a gap visible.
 
 ## Notes
 
 - Notification text is in Portuguese (pt-BR); code, docs and specs are in
   English.
-- Ultralytics YOLO is AGPL-3.0. That is acceptable for this personal project,
-  which is not distributed as a product.
-- This is a companion to HomeView, a menu bar camera viewer for the same DVR. It
-  does not change HomeView in any way.
+- This is a companion to [HomeView](https://github.com/carlosbarreto55/homeview),
+  a menu bar camera viewer for the same DVR. The control contract is there so
+  that HomeView can show Sentinel's state and switch its watch mode, which is a
+  planned HomeView change.
+
+## License
+
+[GNU Affero General Public License v3.0](LICENSE). The detector uses
+[Ultralytics YOLO](https://github.com/ultralytics/ultralytics), which is also
+AGPL-3.0.
