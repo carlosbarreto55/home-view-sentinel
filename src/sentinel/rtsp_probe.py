@@ -31,13 +31,9 @@ def encode_credential(text: str) -> str:
     return quote(text, safe="-._~")
 
 
-def stream_path(channel: int, subtype: int) -> str:
-    return f"/cam/realmonitor?channel={channel}&subtype={subtype}"
-
-
-def stream_url(host: str, port: int, channel: int, subtype: int) -> str:
+def stream_url(host: str, port: int, path: str) -> str:
     """The stream address without credentials, safe for logs."""
-    return f"rtsp://{host}:{port}{stream_path(channel, subtype)}"
+    return f"rtsp://{host}:{port}{path}"
 
 
 @dataclass(frozen=True)
@@ -240,13 +236,12 @@ def probe(
     port: int,
     user: str,
     password: str,
-    channel: int = 1,
-    subtype: int = 1,
+    path: str = "/",
     timeout: float = 5.0,
 ) -> ProbeResult:
     """DESCRIBE one stream; when challenged, answer once and classify the result."""
     deadline = time.monotonic() + timeout
-    uri = stream_url(host, port, channel, subtype)
+    uri = stream_url(host, port, path)
     connection = None
     try:
         connection = _Connection(host, port, deadline)

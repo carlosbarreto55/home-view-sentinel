@@ -38,8 +38,8 @@ class FakeProbe:
         self.result = result
         self.calls = []
 
-    def __call__(self, host, port, user, password, channel, subtype):
-        self.calls.append((host, port, user, password, channel, subtype))
+    def __call__(self, host, port, user, password, path):
+        self.calls.append((host, port, user, password, path))
         return self.result
 
 
@@ -108,10 +108,10 @@ def test_dvr_not_found_exits_for_launchd_to_try_again(tmp_path):
 def test_accepted_login_runs_go2rtc_with_the_login_in_its_environment_only(tmp_path):
     gw = gateway(tmp_path)
     assert gw.run() == EXIT_RESTART  # go2rtc exited on its own
-    host, port, user, password, channel, subtype = gw.check_login.calls[0]
+    host, port, user, password, path = gw.check_login.calls[0]
     camera = gw.config.cameras[0]
     assert (host, port, user, password) == ("192.0.2.10", 554, "sentinel", PASSWORD)
-    assert (channel, subtype) == (camera.channel, camera.subtype)
+    assert path == gw.config.dvr.path(camera.channel, camera.subtype)
 
     spec, env = gw.run_container.calls[0]
     assert env == {"DVR_USER": "sentinel", "DVR_PASSWORD": "a%40b%3Ac%2Fd%23e"}

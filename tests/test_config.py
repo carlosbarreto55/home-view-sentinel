@@ -23,6 +23,7 @@ def error_for(data) -> ConfigError:
 def test_example_file_is_valid():
     cfg = config.load(EXAMPLE)
     assert cfg.dvr.host == "192.0.2.10"
+    assert cfg.dvr.stream_path == config.DVR.stream_path
     assert cfg.sampling.fps == 5
     assert cfg.model.min_confidence == 0.4
     assert cfg.dwell.thresholds == {"motorcycle": 30, "car": 120}
@@ -215,3 +216,37 @@ def test_ntfy_base_url_is_optional_and_loses_its_trailing_slash():
     assert config.from_dict(data).notifications.ntfy_base_url is None
     data["notifications"]["ntfy_base_url"] = "https://mac.tail1234.ts.net/"
     assert config.from_dict(data).notifications.ntfy_base_url == "https://mac.tail1234.ts.net"
+
+
+def test_stream_path_defaults_to_the_realmonitor_form():
+    data = example()
+    del data["dvr"]["stream_path"]
+    dvr = config.from_dict(data).dvr
+    assert dvr.path(1, 0) == "/cam/realmonitor?channel=1&subtype=0"
+
+
+def test_stream_path_can_number_streams_from_one():
+    data = example()
+    data["dvr"]["stream_path"] = "/Streaming/Channels/{channel}0{stream_number}"
+    dvr = config.from_dict(data).dvr
+    assert dvr.path(3, 1) == "/Streaming/Channels/302"
+    assert dvr.path(12, 0) == "/Streaming/Channels/1201"
+
+
+@pytest.mark.parametrize(
+    ("template", "problem"),
+    [
+        ("cam/{channel}", "must start with /"),
+        ("/live/{camera}", "unknown placeholder {camera}"),
+        ("/live/{channel:02d}", "unknown placeholder {channel}"),
+        ("/live/{}", "unknown placeholder {}"),
+        ("/live/main", "must use {channel}"),
+        ("/live/{channel", "is not a valid template"),
+    ],
+)
+def test_bad_stream_path(template, problem):
+    data = example()
+    data["dvr"]["stream_path"] = template
+    error = error_for(data)
+    assert error.field == "dvr.stream_path"
+    assert problem in error.problem

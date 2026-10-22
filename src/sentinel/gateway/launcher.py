@@ -112,8 +112,7 @@ class Gateway:
             self.config.dvr.port,
             user,
             password,
-            channel=camera.channel,
-            subtype=camera.subtype,
+            path=self.config.dvr.path(camera.channel, camera.subtype),
         )
         if result is ProbeResult.WRONG_CREDENTIALS:
             self.stop_marker.parent.mkdir(parents=True, exist_ok=True)

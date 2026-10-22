@@ -43,7 +43,7 @@ def test_wrong_user(fake_rtsp):
 
 def test_accepted_with_404_for_a_channel_without_camera(fake_rtsp):
     server = fake_rtsp(accepted_status="404 Not Found")
-    assert run(server, channel=7) is ProbeResult.ACCEPTED
+    assert run(server, path="/cam/realmonitor?channel=7&subtype=0") is ProbeResult.ACCEPTED
 
 
 def test_server_without_authentication(fake_rtsp):
@@ -77,11 +77,9 @@ def test_nothing_listening():
 
 def test_request_uri_has_no_credentials(fake_rtsp):
     server = fake_rtsp()
-    run(server, channel=3, subtype=0)
+    run(server, path="/Streaming/Channels/301")
     first_lines = [request.split("\r\n")[0] for request in server.requests]
-    expected = (
-        f"DESCRIBE rtsp://127.0.0.1:{server.port}/cam/realmonitor?channel=3&subtype=0 RTSP/1.0"
-    )
+    expected = f"DESCRIBE rtsp://127.0.0.1:{server.port}/Streaming/Channels/301 RTSP/1.0"
     assert first_lines == [expected, expected]
     assert all(PASSWORD not in request for request in server.requests)
 
@@ -129,6 +127,6 @@ def test_encode_credential_keeps_only_unreserved():
 
 
 def test_stream_url_for_logs():
-    assert stream_url("192.0.2.10", 554, 1, 0) == (
+    assert stream_url("192.0.2.10", 554, "/cam/realmonitor?channel=1&subtype=0") == (
         "rtsp://192.0.2.10:554/cam/realmonitor?channel=1&subtype=0"
     )

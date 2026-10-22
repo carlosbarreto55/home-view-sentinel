@@ -7,6 +7,14 @@
 dvr:
   host: 192.0.2.10
   port: 554
+  # The RTSP path of a camera's stream, after the host and port. It differs
+  # between DVR makers: see the DVR's manual or its network settings. The
+  # placeholders are {channel}, the camera's channel, and its stream numbered
+  # either from 0 as {subtype} (0 main stream, 1 substream) or from 1 as
+  # {stream_number} (1 main stream, 2 substream). Two common forms:
+  #   /cam/realmonitor?channel={channel}&subtype={subtype}
+  #   /Streaming/Channels/{channel}0{stream_number}
+  stream_path: /cam/realmonitor?channel={channel}&subtype={subtype}
 
 # Frames per second passed to detection, per camera.
 sampling:

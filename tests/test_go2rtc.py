@@ -24,6 +24,17 @@ def test_only_configured_cameras_are_streamed():
     }
 
 
+def test_streams_follow_the_configured_path():
+    data = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
+    data["dvr"]["stream_path"] = "/Streaming/Channels/{channel}0{stream_number}"
+    data["cameras"].append(dict(data["cameras"][0], id="rua", name="Rua", channel=3, stream="sub"))
+    rendered = yaml.safe_load(go2rtc.render(config.from_dict(data)))
+    assert rendered["streams"] == {
+        "garagem": "rtsp://${DVR_USER}:${DVR_PASSWORD}@192.0.2.10:554/Streaming/Channels/101",
+        "rua": "rtsp://${DVR_USER}:${DVR_PASSWORD}@192.0.2.10:554/Streaming/Channels/302",
+    }
+
+
 def test_only_rtsp_is_served():
     rendered = yaml.safe_load(go2rtc.render(two_cameras(), rtsp_listen="127.0.0.1:8554"))
     assert rendered["rtsp"] == {"listen": "127.0.0.1:8554"}

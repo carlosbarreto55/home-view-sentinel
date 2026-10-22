@@ -12,7 +12,7 @@ from pathlib import Path
 import yaml
 
 from sentinel.config import Config
-from sentinel.rtsp_probe import encode_credential, stream_path
+from sentinel.rtsp_probe import encode_credential
 
 RTSP_PORT = 8554
 # Inside the container go2rtc listens on every interface of the container; the
@@ -24,7 +24,7 @@ def source_url(config: Config, channel: int, subtype: int) -> str:
     """The DVR stream address with credential placeholders (expanded by go2rtc)."""
     return (
         f"rtsp://${{DVR_USER}}:${{DVR_PASSWORD}}@{config.dvr.host}:{config.dvr.port}"
-        f"{stream_path(channel, subtype)}"
+        f"{config.dvr.path(channel, subtype)}"
     )
 
 

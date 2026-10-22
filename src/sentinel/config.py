@@ -7,6 +7,7 @@ e.g. ``cameras[garagem].zones[calcada].polygon: needs at least 3 points``.
 from __future__ import annotations
 
 import re
+import string
 from dataclasses import dataclass, field
 from datetime import time
 from pathlib import Path
@@ -19,6 +20,9 @@ DEFAULT_PATH = Path("config/sentinel.yaml")
 
 VEHICLE_CLASSES = ("motorcycle", "car")
 STREAMS = {"main": 0, "sub": 1}
+# The placeholders of dvr.stream_path: the camera's channel, and its stream numbered
+# from 0 (subtype) or from 1 (stream_number), the two ways DVRs number them.
+STREAM_PATH_FIELDS = ("channel", "subtype", "stream_number")
 _ID = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _HHMM = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 
@@ -36,6 +40,11 @@ class ConfigError(ValueError):
 class DVR:
     host: str = "192.0.2.10"
     port: int = 554
+    stream_path: str = "/cam/realmonitor?channel={channel}&subtype={subtype}"
+
+    def path(self, channel: int, subtype: int) -> str:
+        """The RTSP path of one camera stream (subtype 0 is the main stream, 1 the substream)."""
+        return self.stream_path.format(channel=channel, subtype=subtype, stream_number=subtype + 1)
 
 
 @dataclass(frozen=True)
@@ -171,9 +180,36 @@ def from_dict(data: Any) -> Config:
 
 
 def _dvr(s: _Section) -> DVR:
-    value = DVR(host=s.string("host", DVR.host), port=s.integer("port", DVR.port, 1, 65535))
+    value = DVR(
+        host=s.string("host", DVR.host),
+        port=s.integer("port", DVR.port, 1, 65535),
+        stream_path=_stream_path(s),
+    )
     s.no_unknown_keys()
     return value
+
+
+def _stream_path(s: _Section) -> str:
+    template = s.string("stream_path", DVR.stream_path)
+    if not template.startswith("/"):
+        raise ConfigError(s.path("stream_path"), "must start with /")
+    try:
+        fields = [
+            (name, spec, conversion)
+            for _, name, spec, conversion in string.Formatter().parse(template)
+            if name is not None
+        ]
+    except ValueError as error:
+        raise ConfigError(s.path("stream_path"), f"is not a valid template: {error}") from None
+    accepted = ", ".join("{" + name + "}" for name in STREAM_PATH_FIELDS)
+    for name, spec, conversion in fields:
+        if name not in STREAM_PATH_FIELDS or spec or conversion:
+            raise ConfigError(
+                s.path("stream_path"), f"unknown placeholder {{{name}}}; use {accepted}"
+            )
+    if "channel" not in {name for name, _, _ in fields}:
+        raise ConfigError(s.path("stream_path"), "must use {channel}")
+    return template
 
 
 def _sampling(s: _Section) -> Sampling:
