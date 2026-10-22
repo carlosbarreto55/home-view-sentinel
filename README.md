@@ -100,14 +100,15 @@ holds each car steadily. Both take under 3 ms per frame on the Neural Engine.
 
 ## Status
 
-Sentinel already runs on the real Mac, DVR and iPhone. Both OpenSpec changes
-are built and covered by **416 unit tests**. What is left is measuring and
-verifying on the real hardware:
+Sentinel already runs on the real Mac, DVR and iPhone. Every OpenSpec change
+is built and covered by more than **420 unit tests**. What is left is measuring
+and verifying on the real hardware:
 
 | Change | Tasks done | Left |
 | --- | --- | --- |
 | [`stopped-vehicle-alerts`](openspec/changes/stopped-vehicle-alerts/tasks.md) | 31 of 35 | calibrating the zones with daytime and nighttime clips, a one-hour resource measurement, the manual verification checklist, the full README |
 | [`watch-schedule`](openspec/changes/watch-schedule/tasks.md) | 9 of 10 | the manual checks on the Mac (sleep, reboot, battery, killing the agent) |
+| [`configurable-stream-path`](openspec/changes/configurable-stream-path/tasks.md) | 2 of 2 | nothing |
 
 **Built and tested:**
 - Configuration and Keychain secrets.
@@ -158,14 +159,16 @@ verifying on the real hardware:
 
 The project is planned with [OpenSpec](https://github.com/Fission-AI/OpenSpec).
 
-- **The changes.** The work is split into two changes, each with a proposal
+- **The changes.** The work is split into three changes, each with a proposal
   (why and what), a design (decisions, risks, open questions), capability specs
   written as requirements with WHEN/THEN scenarios, and a task list:
   - [`stopped-vehicle-alerts`](openspec/changes/stopped-vehicle-alerts/), the
     first version: 17 design decisions and six capability specs;
   - [`watch-schedule`](openspec/changes/watch-schedule/), the control agent and
     the watch modes: a new `watch-control` spec, plus changes to two existing
-    ones.
+    ones;
+  - [`configurable-stream-path`](openspec/changes/configurable-stream-path/),
+    the DVR's RTSP path as a setting, so any DVR maker's path works.
 - **One commit per task.** Each task is a single
   [Conventional Commit](https://www.conventionalcommits.org/) containing the
   code, its tests and the ticked box, and every commit passes `make test`.
@@ -181,7 +184,9 @@ The project is planned with [OpenSpec](https://github.com/Fission-AI/OpenSpec).
   FFmpeg (`brew install ffmpeg`) and Apple's
   [`container`](https://github.com/apple/container).
 - A DVR (or any camera with RTSP), with a user that can only
-  view live video.
+  view live video. DVR makers use different RTSP paths: set `dvr.stream_path`
+  in `config/sentinel.yaml` to your DVR's (the example file shows the two
+  common forms).
 - An iPhone with the ntfy app. To get alerts away from home, Tailscale on both
   the Mac and the iPhone.
 

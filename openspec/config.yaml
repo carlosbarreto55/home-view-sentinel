@@ -35,8 +35,9 @@ context: |
   Domain (verified against the real device in HomeView):
   - DVR: 8 channels, on the LAN at
     192.0.2.10. Ports: 554 RTSP, 80 HTTP.
-  - Live stream: rtsp://HOST:554/cam/realmonitor?channel=N&subtype=S
-    (N = 1..8; S = 0 main stream, 1 substream). Digest auth without qop.
+  - Live stream: rtsp://HOST:554 followed by the path in dvr.stream_path; on this
+    DVR /cam/realmonitor?channel=N&subtype=S (N = 1..8; S = 0 main stream,
+    1 substream). Digest auth without qop.
   - Substreams: H.264 352x240 at 7 fps (too small for detection at street distance).
     Main streams: H.265; channels 1-7 are 960x1080 ("1080N", non-square pixels, meant to
     be shown at 16:9), channel 8 is 1280x720; 15-30 fps.
